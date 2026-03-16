@@ -74,7 +74,7 @@
         "title": "View Log",
         "icon": "$(history)",
         "category": "Remote Git"
-      },
+      }
     ],
     "menus": {
       "scm/title": [
