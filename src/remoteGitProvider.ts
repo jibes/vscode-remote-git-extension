@@ -33,10 +33,13 @@ export class RemoteGitProvider implements vscode.Disposable {
         private readonly config: RemoteGitConfig,
         private readonly workspaceRoot: string,
     ) {
+        // Do NOT pass the local workspace folder as rootUri — that would make
+        // VSCode treat this as the primary SCM provider for the folder and
+        // suppress the built-in git extension. We're a remote provider and
+        // don't own any local path.
         this.scm = vscode.scm.createSourceControl(
             'remote-git',
-            'Remote Git',
-            vscode.Uri.file(workspaceRoot),
+            `Remote Git (${config.host})`,
         );
         this.scm.acceptInputCommand = {
             command: 'remoteGit.commit',
