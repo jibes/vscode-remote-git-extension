@@ -4,6 +4,7 @@
   "description": "Adds a Remote Git accordion to the VSCode SCM sidebar — operates via SSH, no local clone required",
   "version": "0.1.0",
   "publisher": "remote-git",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.80.0"
   },
