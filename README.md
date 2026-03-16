@@ -1,32 +1,44 @@
 # Remote Git — VSCode Extension
 
-A native-feeling Source Control panel that operates against a **remote `.git` directory over SSH**. No local clone required. When a local clone is present it acts as a parallel interface, keeping local history in sync after each commit.
+Adds a **Remote Git** accordion to the VSCode Source Control sidebar that operates against a remote `.git` directory over SSH. No local clone required. The built-in VSCode git panel handles local history as normal — this extension sits alongside it.
 
 ---
 
 ## How It Works
 
-The extension registers as a standard VSCode SCM provider. Every git operation (status, stage, commit, push, pull, log, branch) runs on the server via SSH:
+Every git operation runs on the server via SSH:
 
 ```
 ssh user@host "git -C /var/www/projectname <command>"
 ```
 
-Git status is polled on a short interval so the SCM panel stays current. Clicking any file opens a VSCode diff editor — both sides are streamed from the server on demand.
+Git status is polled on a short interval so the panel stays current. Clicking any file opens a VSCode diff editor — both sides are streamed from the server on demand.
 
 ---
 
 ## Setup
 
-### 1. Install dependencies
+### 1. Build the extension
 
 ```bash
-cd vscode-remote-git-extension
 npm install
 npm run compile
+# or: vsce package  →  installs remote-git-x.x.x.vsix
 ```
 
-### 2. Create `.vscode/remote-git.json` in your project
+### 2. Connection config
+
+The extension resolves connection details from three sources in priority order — higher sources win, and they can be partial (e.g. override just `remotePath` while host/username come from a lower layer):
+
+| Priority | Source | Notes |
+|----------|--------|-------|
+| 1 (highest) | `.vscode/remote-git.json` | Explicit config, committed to repo |
+| 2 | `.vscode/remote-sync.json` | [Remote Sync / Mutagen](https://marketplace.visualstudio.com/items?itemName=Ablaze.remote-sync) extension settings |
+| 3 (fallback) | Local git remote `origin` | SSH URL parsed from `git remote get-url origin` |
+
+**No config file needed** if your workspace is already a local clone of an SSH remote — the extension reads `origin` automatically.
+
+`.vscode/remote-git.json` example (only fields that differ from lower layers are required):
 
 ```json
 {
@@ -34,57 +46,59 @@ npm run compile
   "port": 22,
   "username": "ubuntu",
   "remotePath": "/var/www/projectname",
-  "autoLocalPull": true
+  "autoLocalPull": true,
+  "identityFile": "~/.ssh/id_rsa",
+  "pollInterval": 5000
 }
 ```
 
-Commit this file to the repository so the whole team shares the same connection settings.
+Recognised SSH remote URL formats for the git remote fallback:
+
+```
+ssh://ubuntu@myserver.com:22/var/www/project
+git@myserver.com:/var/www/project
+ubuntu@myserver.com:/var/www/project
+```
+
+HTTPS remotes (GitHub, GitLab, etc.) are ignored and the extension stays dormant.
 
 ### 3. SSH authentication
 
-The extension tries the following private keys (in order):
+Keys tried in order:
 
-1. `identityFile` from the config (if specified)
+1. `identityFile` from config
 2. `~/.ssh/id_ed25519`
 3. `~/.ssh/id_ecdsa`
 4. `~/.ssh/id_rsa`
 
-If no key is found it prompts for a password. Using `ssh-agent` is recommended for keyless UX.
-
----
-
-## Integration with Remote Sync
-
-If `.vscode/remote-sync.json` is present (e.g. from a Mutagen sync extension), Remote Git reads `host`, `port`, `username`, and `remotePath` from that file automatically. You only need `.vscode/remote-git.json` if the git remote path differs from the sync path, or to override individual fields.
+Falls back to a password prompt if no key is found. `ssh-agent` is recommended.
 
 ---
 
 ## SCM Panel
 
+The Remote Git accordion appears in the Source Control sidebar alongside the built-in git panel:
+
 ```
-REMOTE GIT  [ fix login validation     ]  [✓ Commit]
-│
-├── Staged Changes
-│   └── index.php              M
-│
-├── Changes
-│   ├── src/Auth.php           M
-│   ├── templates/login.php    M
-│   └── config/routes.php      M
-│
-└── Untracked
-    └── src/NewHelper.php      ?
+▼ SOURCE CONTROL          ← built-in git (local)
+▼ REMOTE GIT (host)       ← this extension
+  │
+  ├── Staged Changes
+  │   └── index.php              M
+  ├── Changes
+  │   ├── src/Auth.php           M
+  │   └── config/routes.php      M
+  └── Untracked
+      └── src/NewHelper.php      ?
 ```
 
-### Title bar actions
+### Title bar
 
 | Icon | Action |
 |------|--------|
-| $(refresh) | Refresh status |
-| $(add) | Stage all changes |
-| $(arrow-down) | Pull (--rebase) |
-| $(arrow-up) | Push |
-| … menu | View log, Checkout branch, Create branch |
+| `$(refresh)` | Refresh status |
+| `$(add)` | Stage all changes |
+| `…` menu | View log |
 
 ### Per-file inline actions (hover)
 
@@ -103,8 +117,8 @@ Clicking a file opens a standard VSCode diff editor. Both sides are fetched from
 | Side | Source |
 |------|--------|
 | Left | `git show HEAD:<file>` |
-| Right (unstaged) | `cat <remotePath>/<file>` (live working tree) |
-| Right (staged) | `git show :<file>` (index content) |
+| Right — unstaged | `cat <remotePath>/<file>` (live working tree) |
+| Right — staged | `git show :<file>` (index content) |
 
 ---
 
@@ -117,50 +131,39 @@ Clicking a file opens a standard VSCode diff editor. Both sides are fetched from
 | Unstage file | `git restore --staged <path>` |
 | Discard changes | `git restore <path>` |
 | Commit | `git commit -m "<message>"` |
-| Push | `git push` |
-| Pull | `git pull --rebase` |
 | View log | `git log --oneline --graph --decorate -50` |
-| Checkout branch | `git checkout <branch>` |
-| Create branch | `git checkout -b <branch>` |
+
+The log opens in a dedicated **Output Channel** (`Remote Git Log — <host>`) — read-only, no save prompt, refreshed on each call.
 
 ---
 
 ## Post-Commit Local Sync
 
-After every remote commit, if a local `.git` directory is detected, the extension runs:
+After every remote commit, if a local `.git` directory is detected the extension runs:
 
 ```bash
 git -C <workspaceRoot> pull --rebase
 ```
 
-This advances local history so blame, log, and history browsing reflect the latest commits. Conflicts are structurally impossible — Mutagen has already synced file contents, so the local working tree already matches the incoming commit.
+This advances local history so blame, log, and history browsing in GitLens or the built-in git panel reflect the latest commits. Conflicts are structurally impossible — file contents are already in sync via Mutagen before the pull happens.
 
-Set `"autoLocalPull": false` in `.vscode/remote-git.json` to disable.
+Disable with `"autoLocalPull": false` in `.vscode/remote-git.json`.
 
 ---
 
 ## Configuration Reference
 
-`.vscode/remote-git.json`:
+All fields are optional when a lower-priority source already provides them.
 
-```json
-{
-  "host": "your.server.com",       // required
-  "port": 22,                       // optional, default 22
-  "username": "ubuntu",             // required
-  "remotePath": "/var/www/project", // required — must be an absolute path
-  "autoLocalPull": true,            // optional, default true
-  "identityFile": "~/.ssh/id_rsa",  // optional — override SSH key path
-  "pollInterval": 5000              // optional — ms between status polls
-}
-```
-
-VSCode settings (`settings.json`):
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `remoteGit.pollInterval` | `5000` | Poll interval in milliseconds |
-| `remoteGit.autoLocalPull` | `true` | Auto pull local clone after remote commit |
+| Field | Default | Description |
+|-------|---------|-------------|
+| `host` | — | SSH hostname or IP |
+| `port` | `22` | SSH port |
+| `username` | — | SSH username |
+| `remotePath` | — | Absolute path to the project on the server |
+| `autoLocalPull` | `true` | Pull local clone after each remote commit |
+| `identityFile` | auto | Path to SSH private key |
+| `pollInterval` | `5000` | ms between status polls |
 
 ---
 
@@ -168,9 +171,9 @@ VSCode settings (`settings.json`):
 
 ```
 src/
-├── extension.ts          — Activation, command registration, lifecycle
-├── config.ts             — Loads remote-git.json / remote-sync.json
-├── sshClient.ts          — SSH connection wrapper (ssh2)
-├── remoteGitProvider.ts  — VSCode SCM provider, polling, git operations
+├── extension.ts           — Activation, command registration, lifecycle
+├── config.ts              — Three-level config (remote-git.json > remote-sync.json > git remote)
+├── sshClient.ts           — SSH connection wrapper (ssh2)
+├── remoteGitProvider.ts   — VSCode SCM provider, polling, git operations
 └── diffContentProvider.ts — TextDocumentContentProvider for remote-git:// URIs
 ```
