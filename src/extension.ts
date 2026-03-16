@@ -41,7 +41,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             return;
         }
 
-        provider = new RemoteGitProvider(context, ssh, config, workspaceRoot);
+        provider = new RemoteGitProvider(ssh, config, workspaceRoot);
     };
 
     await init();

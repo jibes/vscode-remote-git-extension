@@ -13,10 +13,6 @@ export interface FileStatus {
     group: 'staged' | 'changes' | 'untracked';
 }
 
-/**
- * VSCode Source Control provider that operates entirely via SSH against a
- * remote .git directory. Registers as a standard SCM panel in the sidebar.
- */
 export class RemoteGitProvider implements vscode.Disposable {
     private readonly scm: vscode.SourceControl;
     private readonly stagedGroup: vscode.SourceControlResourceGroup;
@@ -24,19 +20,18 @@ export class RemoteGitProvider implements vscode.Disposable {
     private readonly untrackedGroup: vscode.SourceControlResourceGroup;
     private readonly statusBar: vscode.StatusBarItem;
     private readonly contentProvider: RemoteGitContentProvider;
+    // Fix: own disposables list so they're cleaned up when THIS provider is
+    // disposed, not when the extension deactivates. Avoids duplicate scheme
+    // registrations when init() recreates the provider on config reload.
+    private readonly disposables: vscode.Disposable[] = [];
     private pollTimer: ReturnType<typeof setInterval> | null = null;
     private disposed = false;
 
     constructor(
-        private readonly context: vscode.ExtensionContext,
         private readonly ssh: SSHClient,
         private readonly config: RemoteGitConfig,
         private readonly workspaceRoot: string,
     ) {
-        // Do NOT pass the local workspace folder as rootUri — that would make
-        // VSCode treat this as the primary SCM provider for the folder and
-        // suppress the built-in git extension. We're a remote provider and
-        // don't own any local path.
         this.scm = vscode.scm.createSourceControl(
             'remote-git',
             `Remote Git (${config.host})`,
@@ -63,9 +58,8 @@ export class RemoteGitProvider implements vscode.Disposable {
         this.statusBar.show();
 
         this.contentProvider = new RemoteGitContentProvider(ssh, config);
-        context.subscriptions.push(
+        this.disposables.push(
             vscode.workspace.registerTextDocumentContentProvider('remote-git', this.contentProvider),
-            // File decoration provider — shows M / A / D letters in the SCM panel
             vscode.window.registerFileDecorationProvider(this._makeDecorationProvider()),
         );
 
@@ -95,6 +89,12 @@ export class RemoteGitProvider implements vscode.Disposable {
                 this.ssh.git('status --porcelain'),
                 this.ssh.git('rev-parse --abbrev-ref HEAD'),
             ]);
+
+            // Fix: check disposed again after async — the provider may have
+            // been torn down while waiting for the SSH response.
+            if (this.disposed) {
+                return;
+            }
 
             if (statusResult.code !== 0) {
                 this._setStatus('$(error) Remote Git: not a git repo');
@@ -178,6 +178,7 @@ export class RemoteGitProvider implements vscode.Disposable {
 
     async stageFile(relativePath: string): Promise<void> {
         await this.ssh.git(`add -- ${shellQuote(relativePath)}`);
+        this._invalidatePath(relativePath, 'INDEX');
         await this.refresh();
     }
 
@@ -188,6 +189,7 @@ export class RemoteGitProvider implements vscode.Disposable {
 
     async unstageFile(relativePath: string): Promise<void> {
         await this.ssh.git(`restore --staged -- ${shellQuote(relativePath)}`);
+        this._invalidatePath(relativePath, 'INDEX');
         await this.refresh();
     }
 
@@ -199,6 +201,9 @@ export class RemoteGitProvider implements vscode.Disposable {
         );
         if (answer === 'Discard Changes') {
             await this.ssh.git(`restore -- ${shellQuote(relativePath)}`);
+            // Fix: invalidate WORKING so any open diff view refreshes its
+            // right-hand side to show the now-restored content.
+            this._invalidatePath(relativePath, 'WORKING');
             await this.refresh();
         }
     }
@@ -232,15 +237,23 @@ export class RemoteGitProvider implements vscode.Disposable {
         await vscode.window.withProgress(
             { location: vscode.ProgressLocation.SourceControl, title: 'Committing on remote…' },
             async () => {
-                const result = await this.ssh.git(
-                    `commit -m ${shellQuote(message)}`,
+                // Snapshot staged paths before committing so we can invalidate HEAD
+                const stagedPaths = this.stagedGroup.resourceStates.map(
+                    r => decodeURIComponent(r.resourceUri.path.replace(/^\//, '')),
                 );
+
+                const result = await this.ssh.git(`commit -m ${shellQuote(message)}`);
                 if (result.code !== 0) {
                     vscode.window.showErrorMessage(`Remote Git commit failed: ${result.stderr.trim()}`);
                     return;
                 }
 
                 this.scm.inputBox.value = '';
+                // Fix: invalidate HEAD for every file that was just committed so
+                // open "HEAD vs WORKING" diff editors refresh their left side.
+                for (const p of stagedPaths) {
+                    this._invalidatePath(p, 'HEAD');
+                }
                 vscode.window.showInformationMessage('Remote Git: commit successful');
 
                 if (this.config.autoLocalPull) {
@@ -296,8 +309,14 @@ export class RemoteGitProvider implements vscode.Disposable {
     }
 
     async checkoutBranch(): Promise<void> {
-        // Fetch first so remote-tracking refs are up to date
-        await this.ssh.git('fetch --prune');
+        // Fix: handle fetch failure — warn but still show the cached branch list
+        // rather than silently showing a potentially stale list.
+        const fetchResult = await this.ssh.git('fetch --prune');
+        if (fetchResult.code !== 0) {
+            vscode.window.showWarningMessage(
+                `Remote Git: fetch failed — branch list may be stale (${fetchResult.stderr.trim()})`,
+            );
+        }
 
         const [localResult, remoteResult] = await Promise.all([
             this.ssh.git('branch --format=%(refname:short)'),
@@ -311,16 +330,11 @@ export class RemoteGitProvider implements vscode.Disposable {
 
         const localSet = new Set(localBranches);
 
-        // Remote refs look like "origin/main" — strip the "origin/" prefix for
-        // display and checkout, but only include branches that don't already
-        // exist locally (those are shown in the local list).
-        const remoteBranches = remoteResult.stdout
+        const remoteOnlyNames = remoteResult.stdout
             .split('\n')
             .map(b => b.trim())
-            .filter(b => b && !b.endsWith('/HEAD')); // skip origin/HEAD pointer
-
-        const remoteOnlyNames = remoteBranches
-            .map(b => b.replace(/^[^/]+\//, '')) // strip "origin/" prefix
+            .filter(b => b && !b.endsWith('/HEAD'))
+            .map(b => b.replace(/^[^/]+\//, ''))
             .filter(b => !localSet.has(b));
 
         const items: vscode.QuickPickItem[] = [
@@ -345,7 +359,6 @@ export class RemoteGitProvider implements vscode.Disposable {
             return;
         }
 
-        // For remote-only branches git will auto-create a local tracking branch
         const checkoutResult = await this.ssh.git(`checkout ${shellQuote(selected.label)}`);
         if (checkoutResult.code !== 0) {
             vscode.window.showErrorMessage(
@@ -380,8 +393,15 @@ export class RemoteGitProvider implements vscode.Disposable {
     }
 
     // -------------------------------------------------------------------------
-    // Local pull after remote commit
+    // Helpers
     // -------------------------------------------------------------------------
+
+    /** Tells the content provider to re-fetch this path/ref combination. */
+    private _invalidatePath(relativePath: string, ref: string): void {
+        this.contentProvider.invalidate(
+            remoteGitUri(this.config.host, relativePath, ref),
+        );
+    }
 
     private _tryLocalPull(): void {
         const localGitDir = path.join(this.workspaceRoot, '.git');
@@ -410,6 +430,9 @@ export class RemoteGitProvider implements vscode.Disposable {
             clearInterval(this.pollTimer);
             this.pollTimer = null;
         }
+        // Fix: dispose our own registrations (content provider + decoration provider)
+        // so they don't outlive this provider instance on config reload.
+        this.disposables.forEach(d => d.dispose());
         this.contentProvider.dispose();
         this.statusBar.dispose();
         this.scm.dispose();
@@ -420,13 +443,6 @@ export class RemoteGitProvider implements vscode.Disposable {
 // Helpers
 // -------------------------------------------------------------------------
 
-/**
- * Parses `git status --porcelain` output into FileStatus entries.
- *
- * Porcelain v1 line format:  XY <path>
- *   X = index status
- *   Y = working-tree status
- */
 export function parseGitStatus(output: string): FileStatus[] {
     const files: FileStatus[] = [];
 
@@ -435,11 +451,11 @@ export function parseGitStatus(output: string): FileStatus[] {
             continue;
         }
 
-        const x = rawLine[0]; // index (staged) status
-        const y = rawLine[1]; // working tree status
+        const x = rawLine[0];
+        const y = rawLine[1];
         const rawPath = rawLine.slice(3).trim();
 
-        // Renamed entries look like "old/path -> new/path" — keep only new
+        // Staged renames in porcelain v1 look like "old/path -> new/path"
         const filePath = rawPath.includes(' -> ')
             ? rawPath.split(' -> ')[1].trim()
             : rawPath;
@@ -449,12 +465,10 @@ export function parseGitStatus(output: string): FileStatus[] {
             continue;
         }
 
-        // Staged change
         if (x !== ' ' && x !== '?') {
             files.push({ relativePath: filePath, statusCode: x, group: 'staged' });
         }
 
-        // Unstaged change
         if (y !== ' ' && y !== '?') {
             files.push({ relativePath: filePath, statusCode: y, group: 'changes' });
         }
@@ -465,13 +479,8 @@ export function parseGitStatus(output: string): FileStatus[] {
 
 function statusLabel(code: string): string {
     const labels: Record<string, string> = {
-        M: 'Modified',
-        A: 'Added',
-        D: 'Deleted',
-        R: 'Renamed',
-        C: 'Copied',
-        U: 'Unmerged',
-        '?': 'Untracked',
+        M: 'Modified', A: 'Added', D: 'Deleted',
+        R: 'Renamed', C: 'Copied', U: 'Unmerged', '?': 'Untracked',
     };
     return labels[code] ?? code;
 }
