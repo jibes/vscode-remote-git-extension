@@ -86,6 +86,78 @@
         "title": "Create Branch",
         "icon": "$(git-branch-create)",
         "category": "Remote Git"
+      },
+      {
+        "command": "localGit.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Local Git"
+      },
+      {
+        "command": "localGit.commit",
+        "title": "Commit",
+        "icon": "$(check)",
+        "category": "Local Git"
+      },
+      {
+        "command": "localGit.push",
+        "title": "Push",
+        "icon": "$(arrow-up)",
+        "category": "Local Git"
+      },
+      {
+        "command": "localGit.pull",
+        "title": "Pull",
+        "icon": "$(arrow-down)",
+        "category": "Local Git"
+      },
+      {
+        "command": "localGit.stageAll",
+        "title": "Stage All Changes",
+        "icon": "$(add)",
+        "category": "Local Git"
+      },
+      {
+        "command": "localGit.stageFile",
+        "title": "Stage Changes",
+        "icon": "$(add)",
+        "category": "Local Git"
+      },
+      {
+        "command": "localGit.unstageFile",
+        "title": "Unstage Changes",
+        "icon": "$(remove)",
+        "category": "Local Git"
+      },
+      {
+        "command": "localGit.discardChanges",
+        "title": "Discard Changes",
+        "icon": "$(discard)",
+        "category": "Local Git"
+      },
+      {
+        "command": "localGit.openDiff",
+        "title": "Open Changes",
+        "icon": "$(diff)",
+        "category": "Local Git"
+      },
+      {
+        "command": "localGit.viewLog",
+        "title": "View Log",
+        "icon": "$(history)",
+        "category": "Local Git"
+      },
+      {
+        "command": "localGit.checkoutBranch",
+        "title": "Checkout Branch",
+        "icon": "$(git-branch)",
+        "category": "Local Git"
+      },
+      {
+        "command": "localGit.createBranch",
+        "title": "Create Branch",
+        "icon": "$(git-branch-create)",
+        "category": "Local Git"
       }
     ],
     "menus": {
@@ -123,6 +195,42 @@
         {
           "command": "remoteGit.createBranch",
           "when": "scmProvider == remote-git",
+          "group": "1_commands@3"
+        },
+
+        {
+          "command": "localGit.refresh",
+          "when": "scmProvider == local-git",
+          "group": "navigation@1"
+        },
+        {
+          "command": "localGit.stageAll",
+          "when": "scmProvider == local-git",
+          "group": "navigation@2"
+        },
+        {
+          "command": "localGit.pull",
+          "when": "scmProvider == local-git",
+          "group": "navigation@3"
+        },
+        {
+          "command": "localGit.push",
+          "when": "scmProvider == local-git",
+          "group": "navigation@4"
+        },
+        {
+          "command": "localGit.viewLog",
+          "when": "scmProvider == local-git",
+          "group": "1_commands@1"
+        },
+        {
+          "command": "localGit.checkoutBranch",
+          "when": "scmProvider == local-git",
+          "group": "1_commands@2"
+        },
+        {
+          "command": "localGit.createBranch",
+          "when": "scmProvider == local-git",
           "group": "1_commands@3"
         }
       ],
@@ -170,6 +278,52 @@
         {
           "command": "remoteGit.discardChanges",
           "when": "scmProvider == remote-git && scmResourceGroup == changes",
+          "group": "1_modification@3"
+        },
+
+        {
+          "command": "localGit.openDiff",
+          "when": "scmProvider == local-git",
+          "group": "inline@1"
+        },
+        {
+          "command": "localGit.stageFile",
+          "when": "scmProvider == local-git && scmResourceGroup == changes",
+          "group": "inline@2"
+        },
+        {
+          "command": "localGit.stageFile",
+          "when": "scmProvider == local-git && scmResourceGroup == untracked",
+          "group": "inline@2"
+        },
+        {
+          "command": "localGit.unstageFile",
+          "when": "scmProvider == local-git && scmResourceGroup == staged",
+          "group": "inline@2"
+        },
+        {
+          "command": "localGit.discardChanges",
+          "when": "scmProvider == local-git && scmResourceGroup == changes",
+          "group": "inline@3"
+        },
+        {
+          "command": "localGit.openDiff",
+          "when": "scmProvider == local-git",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "localGit.stageFile",
+          "when": "scmProvider == local-git && scmResourceGroup != staged",
+          "group": "1_modification@2"
+        },
+        {
+          "command": "localGit.unstageFile",
+          "when": "scmProvider == local-git && scmResourceGroup == staged",
+          "group": "1_modification@2"
+        },
+        {
+          "command": "localGit.discardChanges",
+          "when": "scmProvider == local-git && scmResourceGroup == changes",
           "group": "1_modification@3"
         }
       ]
