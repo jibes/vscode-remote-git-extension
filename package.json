@@ -75,18 +75,6 @@
         "icon": "$(history)",
         "category": "Remote Git"
       },
-      {
-        "command": "remoteGit.checkoutBranch",
-        "title": "Checkout Branch",
-        "icon": "$(git-branch)",
-        "category": "Remote Git"
-      },
-      {
-        "command": "remoteGit.createBranch",
-        "title": "Create Branch",
-        "icon": "$(git-branch-create)",
-        "category": "Remote Git"
-      }
     ],
     "menus": {
       "scm/title": [
@@ -114,16 +102,6 @@
           "command": "remoteGit.viewLog",
           "when": "scmProvider == remote-git",
           "group": "1_commands@1"
-        },
-        {
-          "command": "remoteGit.checkoutBranch",
-          "when": "scmProvider == remote-git",
-          "group": "1_commands@2"
-        },
-        {
-          "command": "remoteGit.createBranch",
-          "when": "scmProvider == remote-git",
-          "group": "1_commands@3"
         }
       ],
       "scm/resourceState/context": [

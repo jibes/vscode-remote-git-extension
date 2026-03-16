@@ -54,7 +54,7 @@ export class RemoteGitProvider implements vscode.Disposable {
             vscode.StatusBarAlignment.Left,
             10,
         );
-        this.statusBar.command = 'remoteGit.checkoutBranch';
+        this.statusBar.command = 'remoteGit.viewLog';
         this.statusBar.show();
 
         this.contentProvider = new RemoteGitContentProvider(ssh, config);
@@ -306,126 +306,6 @@ export class RemoteGitProvider implements vscode.Disposable {
             language: 'plaintext',
         });
         await vscode.window.showTextDocument(doc, { preview: true });
-    }
-
-    async checkoutBranch(): Promise<void> {
-        // Fix: handle fetch failure — warn but still show the cached branch list
-        // rather than silently showing a potentially stale list.
-        const fetchResult = await this.ssh.git('fetch --prune');
-        if (fetchResult.code !== 0) {
-            vscode.window.showWarningMessage(
-                `Remote Git: fetch failed — branch list may be stale (${fetchResult.stderr.trim()})`,
-            );
-        }
-
-        const [localResult, remoteResult] = await Promise.all([
-            this.ssh.git('branch --format=%(refname:short)'),
-            this.ssh.git('branch -r --format=%(refname:short)'),
-        ]);
-
-        const localBranches = localResult.stdout
-            .split('\n')
-            .map(b => b.trim())
-            .filter(Boolean);
-
-        const localSet = new Set(localBranches);
-
-        // Parse remote refs keeping the full "remote/branch" string so we can
-        // use `git checkout --track origin/branch` — more reliable than relying
-        // on git's DWIM which can fail when tracking isn't configured.
-        interface RemoteBranch { name: string; remote: string; fullRef: string; }
-        const remoteBranches: RemoteBranch[] = remoteResult.stdout
-            .split('\n')
-            .map(b => b.trim())
-            .filter(b => b && !b.endsWith('/HEAD'))
-            .map(b => {
-                const slash = b.indexOf('/');
-                return {
-                    name: slash >= 0 ? b.slice(slash + 1) : b,
-                    remote: slash >= 0 ? b.slice(0, slash) : 'origin',
-                    fullRef: b,
-                };
-            })
-            .filter(b => !localSet.has(b.name));
-
-        // Deduplicate: if the same branch name exists on multiple remotes,
-        // keep the first occurrence (origin takes precedence).
-        const seen = new Set<string>();
-        const uniqueRemote = remoteBranches.filter(b => {
-            if (seen.has(b.name)) { return false; }
-            seen.add(b.name);
-            return true;
-        });
-
-        interface BranchItem extends vscode.QuickPickItem {
-            readonly isRemote: boolean;
-            readonly fullRef?: string;
-        }
-
-        const items: BranchItem[] = [
-            ...localBranches.map(b => ({
-                label: b,
-                description: 'local',
-                iconPath: new vscode.ThemeIcon('git-branch'),
-                isRemote: false,
-            })),
-            ...uniqueRemote.map(b => ({
-                label: b.name,
-                description: b.remote,          // e.g. "origin"
-                detail: `remote branch (${b.fullRef})`,
-                iconPath: new vscode.ThemeIcon('cloud'),
-                isRemote: true,
-                fullRef: b.fullRef,
-            })),
-        ];
-
-        const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: 'Select branch to checkout',
-            matchOnDescription: true,
-            matchOnDetail: true,
-        });
-
-        if (!selected) {
-            return;
-        }
-
-        // For remote-only branches use --track so a proper local tracking
-        // branch is created. For local branches a plain checkout is enough.
-        const checkoutArg = selected.isRemote && selected.fullRef
-            ? `--track ${shellQuote(selected.fullRef)}`
-            : shellQuote(selected.label);
-
-        const checkoutResult = await this.ssh.git(`checkout ${checkoutArg}`);
-        if (checkoutResult.code !== 0) {
-            vscode.window.showErrorMessage(
-                `Remote Git checkout failed: ${checkoutResult.stderr.trim()}`,
-            );
-        } else {
-            vscode.window.showInformationMessage(`Remote Git: switched to ${selected.label}`);
-            await this.refresh();
-        }
-    }
-
-    async createBranch(): Promise<void> {
-        const name = await vscode.window.showInputBox({
-            prompt: 'New branch name',
-            validateInput: v =>
-                /^[a-zA-Z0-9_\-./]+$/.test(v) ? null : 'Invalid branch name',
-        });
-
-        if (!name) {
-            return;
-        }
-
-        const result = await this.ssh.git(`checkout -b ${shellQuote(name)}`);
-        if (result.code !== 0) {
-            vscode.window.showErrorMessage(
-                `Remote Git create branch failed: ${result.stderr.trim()}`,
-            );
-        } else {
-            vscode.window.showInformationMessage(`Remote Git: created and switched to ${name}`);
-            await this.refresh();
-        }
     }
 
     // -------------------------------------------------------------------------

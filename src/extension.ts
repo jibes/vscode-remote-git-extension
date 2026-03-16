@@ -82,12 +82,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.commands.registerCommand('remoteGit.viewLog', () =>
             provider?.viewLog(),
         ),
-        vscode.commands.registerCommand('remoteGit.checkoutBranch', () =>
-            provider?.checkoutBranch(),
-        ),
-        vscode.commands.registerCommand('remoteGit.createBranch', () =>
-            provider?.createBranch(),
-        ),
         vscode.commands.registerCommand(
             'remoteGit.stageFile',
             (arg: vscode.Uri | vscode.SourceControlResourceState) => {
