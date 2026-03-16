@@ -264,35 +264,6 @@ export class RemoteGitProvider implements vscode.Disposable {
         );
     }
 
-    async push(): Promise<void> {
-        await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.SourceControl, title: 'Pushing…' },
-            async () => {
-                const result = await this.ssh.git('push');
-                if (result.code !== 0) {
-                    vscode.window.showErrorMessage(`Remote Git push failed: ${result.stderr.trim()}`);
-                    return;
-                }
-                vscode.window.showInformationMessage('Remote Git: push successful');
-                await this.refresh();
-            },
-        );
-    }
-
-    async pull(): Promise<void> {
-        await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.SourceControl, title: 'Pulling…' },
-            async () => {
-                const result = await this.ssh.git('pull --rebase');
-                if (result.code !== 0) {
-                    vscode.window.showErrorMessage(`Remote Git pull failed: ${result.stderr.trim()}`);
-                    return;
-                }
-                vscode.window.showInformationMessage('Remote Git: pull successful');
-                await this.refresh();
-            },
-        );
-    }
 
     async viewLog(): Promise<void> {
         const result = await this.ssh.git('log --oneline --graph --decorate -50');

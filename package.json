@@ -28,18 +28,6 @@
         "category": "Remote Git"
       },
       {
-        "command": "remoteGit.push",
-        "title": "Push",
-        "icon": "$(arrow-up)",
-        "category": "Remote Git"
-      },
-      {
-        "command": "remoteGit.pull",
-        "title": "Pull",
-        "icon": "$(arrow-down)",
-        "category": "Remote Git"
-      },
-      {
         "command": "remoteGit.stageAll",
         "title": "Stage All Changes",
         "icon": "$(add)",
@@ -87,16 +75,6 @@
           "command": "remoteGit.stageAll",
           "when": "scmProvider == remote-git",
           "group": "navigation@2"
-        },
-        {
-          "command": "remoteGit.pull",
-          "when": "scmProvider == remote-git",
-          "group": "navigation@3"
-        },
-        {
-          "command": "remoteGit.push",
-          "when": "scmProvider == remote-git",
-          "group": "navigation@4"
         },
         {
           "command": "remoteGit.viewLog",

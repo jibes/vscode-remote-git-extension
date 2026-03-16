@@ -70,12 +70,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.commands.registerCommand('remoteGit.commit', () =>
             provider?.commit(),
         ),
-        vscode.commands.registerCommand('remoteGit.push', () =>
-            provider?.push(),
-        ),
-        vscode.commands.registerCommand('remoteGit.pull', () =>
-            provider?.pull(),
-        ),
         vscode.commands.registerCommand('remoteGit.stageAll', () =>
             provider?.stageAll(),
         ),
