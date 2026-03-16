@@ -10,7 +10,8 @@
   "categories": ["SCM Providers"],
   "activationEvents": [
     "workspaceContains:.vscode/remote-git.json",
-    "workspaceContains:.vscode/remote-sync.json"
+    "workspaceContains:.vscode/remote-sync.json",
+    "workspaceContains:.git"
   ],
   "main": "./out/extension",
   "contributes": {
