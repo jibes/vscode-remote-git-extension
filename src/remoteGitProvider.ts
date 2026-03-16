@@ -24,6 +24,7 @@ export class RemoteGitProvider implements vscode.Disposable {
     // disposed, not when the extension deactivates. Avoids duplicate scheme
     // registrations when init() recreates the provider on config reload.
     private readonly disposables: vscode.Disposable[] = [];
+    private logChannel: vscode.OutputChannel | undefined;
     private pollTimer: ReturnType<typeof setInterval> | null = null;
     private disposed = false;
 
@@ -272,11 +273,14 @@ export class RemoteGitProvider implements vscode.Disposable {
             return;
         }
 
-        const doc = await vscode.workspace.openTextDocument({
-            content: result.stdout,
-            language: 'plaintext',
-        });
-        await vscode.window.showTextDocument(doc, { preview: true });
+        if (!this.logChannel) {
+            this.logChannel = vscode.window.createOutputChannel(
+                `Remote Git Log — ${this.config.host}`,
+            );
+        }
+        this.logChannel.clear();
+        this.logChannel.append(result.stdout);
+        this.logChannel.show(/* preserveFocus */ true);
     }
 
     // -------------------------------------------------------------------------
@@ -320,6 +324,7 @@ export class RemoteGitProvider implements vscode.Disposable {
         // Fix: dispose our own registrations (content provider + decoration provider)
         // so they don't outlive this provider instance on config reload.
         this.disposables.forEach(d => d.dispose());
+        this.logChannel?.dispose();
         this.contentProvider.dispose();
         this.statusBar.dispose();
         this.scm.dispose();
