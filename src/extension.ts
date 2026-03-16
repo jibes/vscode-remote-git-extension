@@ -1,13 +1,9 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { loadConfig } from './config';
 import { SSHClient } from './sshClient';
 import { RemoteGitProvider } from './remoteGitProvider';
-import { LocalGitProvider } from './localGitProvider';
 
-let remoteProvider: RemoteGitProvider | undefined;
-let localProvider: LocalGitProvider | undefined;
+let provider: RemoteGitProvider | undefined;
 let ssh: SSHClient | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -17,16 +13,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     const workspaceRoot = folders[0].uri.fsPath;
 
-    // -------------------------------------------------------------------------
-    // Initialise / reinitialise both providers
-    // -------------------------------------------------------------------------
-
     const init = async (): Promise<void> => {
-        remoteProvider?.dispose();
-        localProvider?.dispose();
+        provider?.dispose();
         ssh?.disconnect();
-        remoteProvider = undefined;
-        localProvider = undefined;
+        provider = undefined;
         ssh = undefined;
 
         let config;
@@ -41,7 +31,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             return;
         }
 
-        // -- Remote provider --------------------------------------------------
         ssh = new SSHClient(config);
         try {
             await ssh.connect();
@@ -51,19 +40,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             );
             return;
         }
-        remoteProvider = new RemoteGitProvider(context, ssh, config, workspaceRoot);
 
-        // -- Local provider (only when a local .git clone exists) -------------
-        if (fs.existsSync(path.join(workspaceRoot, '.git'))) {
-            localProvider = new LocalGitProvider(context, workspaceRoot);
-        }
+        provider = new RemoteGitProvider(context, ssh, config, workspaceRoot);
     };
 
     await init();
-
-    // -------------------------------------------------------------------------
-    // Re-initialise when config changes
-    // -------------------------------------------------------------------------
 
     const watcher = vscode.workspace.createFileSystemWatcher(
         new vscode.RelativePattern(workspaceRoot, '.vscode/remote-git.json'),
@@ -71,50 +52,48 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     watcher.onDidCreate(() => init());
     watcher.onDidChange(() => init());
     watcher.onDidDelete(() => {
-        remoteProvider?.dispose();
-        localProvider?.dispose();
+        provider?.dispose();
         ssh?.disconnect();
-        remoteProvider = undefined;
-        localProvider = undefined;
+        provider = undefined;
         ssh = undefined;
     });
     context.subscriptions.push(watcher);
 
     // -------------------------------------------------------------------------
-    // Remote Git commands
+    // Commands
     // -------------------------------------------------------------------------
 
     context.subscriptions.push(
         vscode.commands.registerCommand('remoteGit.refresh', () =>
-            remoteProvider?.refresh(),
+            provider?.refresh(),
         ),
         vscode.commands.registerCommand('remoteGit.commit', () =>
-            remoteProvider?.commit(),
+            provider?.commit(),
         ),
         vscode.commands.registerCommand('remoteGit.push', () =>
-            remoteProvider?.push(),
+            provider?.push(),
         ),
         vscode.commands.registerCommand('remoteGit.pull', () =>
-            remoteProvider?.pull(),
+            provider?.pull(),
         ),
         vscode.commands.registerCommand('remoteGit.stageAll', () =>
-            remoteProvider?.stageAll(),
+            provider?.stageAll(),
         ),
         vscode.commands.registerCommand('remoteGit.viewLog', () =>
-            remoteProvider?.viewLog(),
+            provider?.viewLog(),
         ),
         vscode.commands.registerCommand('remoteGit.checkoutBranch', () =>
-            remoteProvider?.checkoutBranch(),
+            provider?.checkoutBranch(),
         ),
         vscode.commands.registerCommand('remoteGit.createBranch', () =>
-            remoteProvider?.createBranch(),
+            provider?.createBranch(),
         ),
         vscode.commands.registerCommand(
             'remoteGit.stageFile',
             (arg: vscode.Uri | vscode.SourceControlResourceState) => {
                 const uri = resolveUri(arg);
                 if (uri) {
-                    remoteProvider?.stageFile(decodeURIComponent(uri.path.replace(/^\//, '')));
+                    provider?.stageFile(decodeURIComponent(uri.path.replace(/^\//, '')));
                 }
             },
         ),
@@ -123,7 +102,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             (arg: vscode.Uri | vscode.SourceControlResourceState) => {
                 const uri = resolveUri(arg);
                 if (uri) {
-                    remoteProvider?.unstageFile(decodeURIComponent(uri.path.replace(/^\//, '')));
+                    provider?.unstageFile(decodeURIComponent(uri.path.replace(/^\//, '')));
                 }
             },
         ),
@@ -132,7 +111,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             (arg: vscode.Uri | vscode.SourceControlResourceState) => {
                 const uri = resolveUri(arg);
                 if (uri) {
-                    remoteProvider?.discardChanges(decodeURIComponent(uri.path.replace(/^\//, '')));
+                    provider?.discardChanges(decodeURIComponent(uri.path.replace(/^\//, '')));
                 }
             },
         ),
@@ -141,74 +120,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             (arg: vscode.Uri | vscode.SourceControlResourceState) => {
                 const uri = resolveUri(arg);
                 if (uri) {
-                    remoteProvider?.openDiff(uri);
-                }
-            },
-        ),
-    );
-
-    // -------------------------------------------------------------------------
-    // Local Git commands
-    // -------------------------------------------------------------------------
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('localGit.refresh', () =>
-            localProvider?.refresh(),
-        ),
-        vscode.commands.registerCommand('localGit.commit', () =>
-            localProvider?.commit(),
-        ),
-        vscode.commands.registerCommand('localGit.push', () =>
-            localProvider?.push(),
-        ),
-        vscode.commands.registerCommand('localGit.pull', () =>
-            localProvider?.pull(),
-        ),
-        vscode.commands.registerCommand('localGit.stageAll', () =>
-            localProvider?.stageAll(),
-        ),
-        vscode.commands.registerCommand('localGit.viewLog', () =>
-            localProvider?.viewLog(),
-        ),
-        vscode.commands.registerCommand('localGit.checkoutBranch', () =>
-            localProvider?.checkoutBranch(),
-        ),
-        vscode.commands.registerCommand('localGit.createBranch', () =>
-            localProvider?.createBranch(),
-        ),
-        vscode.commands.registerCommand(
-            'localGit.stageFile',
-            (arg: vscode.Uri | vscode.SourceControlResourceState) => {
-                const uri = resolveUri(arg);
-                if (uri) {
-                    localProvider?.stageFile(decodeURIComponent(uri.path.replace(/^\//, '')));
-                }
-            },
-        ),
-        vscode.commands.registerCommand(
-            'localGit.unstageFile',
-            (arg: vscode.Uri | vscode.SourceControlResourceState) => {
-                const uri = resolveUri(arg);
-                if (uri) {
-                    localProvider?.unstageFile(decodeURIComponent(uri.path.replace(/^\//, '')));
-                }
-            },
-        ),
-        vscode.commands.registerCommand(
-            'localGit.discardChanges',
-            (arg: vscode.Uri | vscode.SourceControlResourceState) => {
-                const uri = resolveUri(arg);
-                if (uri) {
-                    localProvider?.discardChanges(decodeURIComponent(uri.path.replace(/^\//, '')));
-                }
-            },
-        ),
-        vscode.commands.registerCommand(
-            'localGit.openDiff',
-            (arg: vscode.Uri | vscode.SourceControlResourceState) => {
-                const uri = resolveUri(arg);
-                if (uri) {
-                    localProvider?.openDiff(uri);
+                    provider?.openDiff(uri);
                 }
             },
         ),
@@ -216,15 +128,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export function deactivate(): void {
-    remoteProvider?.dispose();
-    localProvider?.dispose();
+    provider?.dispose();
     ssh?.disconnect();
-    remoteProvider = undefined;
-    localProvider = undefined;
+    provider = undefined;
     ssh = undefined;
 }
-
-// -------------------------------------------------------------------------
 
 function resolveUri(
     arg: vscode.Uri | vscode.SourceControlResourceState | undefined,
