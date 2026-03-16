@@ -1,0 +1,164 @@
+{
+  "name": "remote-git",
+  "displayName": "Remote Git",
+  "description": "Adds a Remote Git accordion to the VSCode SCM sidebar — operates via SSH, no local clone required",
+  "version": "0.1.0",
+  "publisher": "remote-git",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["SCM Providers"],
+  "activationEvents": [
+    "workspaceContains:.vscode/remote-git.json",
+    "workspaceContains:.vscode/remote-sync.json"
+  ],
+  "main": "./out/extension",
+  "contributes": {
+    "commands": [
+      {
+        "command": "remoteGit.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Remote Git"
+      },
+      {
+        "command": "remoteGit.commit",
+        "title": "Commit",
+        "icon": "$(check)",
+        "category": "Remote Git"
+      },
+      {
+        "command": "remoteGit.stageAll",
+        "title": "Stage All Changes",
+        "icon": "$(add)",
+        "category": "Remote Git"
+      },
+      {
+        "command": "remoteGit.stageFile",
+        "title": "Stage Changes",
+        "icon": "$(add)",
+        "category": "Remote Git"
+      },
+      {
+        "command": "remoteGit.unstageFile",
+        "title": "Unstage Changes",
+        "icon": "$(remove)",
+        "category": "Remote Git"
+      },
+      {
+        "command": "remoteGit.discardChanges",
+        "title": "Discard Changes",
+        "icon": "$(discard)",
+        "category": "Remote Git"
+      },
+      {
+        "command": "remoteGit.openDiff",
+        "title": "Open Changes",
+        "icon": "$(diff)",
+        "category": "Remote Git"
+      },
+      {
+        "command": "remoteGit.viewLog",
+        "title": "View Log",
+        "icon": "$(history)",
+        "category": "Remote Git"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "remoteGit.refresh",
+          "when": "scmProvider == remote-git",
+          "group": "navigation@1"
+        },
+        {
+          "command": "remoteGit.stageAll",
+          "when": "scmProvider == remote-git",
+          "group": "navigation@2"
+        },
+        {
+          "command": "remoteGit.viewLog",
+          "when": "scmProvider == remote-git",
+          "group": "1_commands@1"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "remoteGit.openDiff",
+          "when": "scmProvider == remote-git",
+          "group": "inline@1"
+        },
+        {
+          "command": "remoteGit.stageFile",
+          "when": "scmProvider == remote-git && scmResourceGroup == changes",
+          "group": "inline@2"
+        },
+        {
+          "command": "remoteGit.stageFile",
+          "when": "scmProvider == remote-git && scmResourceGroup == untracked",
+          "group": "inline@2"
+        },
+        {
+          "command": "remoteGit.unstageFile",
+          "when": "scmProvider == remote-git && scmResourceGroup == staged",
+          "group": "inline@2"
+        },
+        {
+          "command": "remoteGit.discardChanges",
+          "when": "scmProvider == remote-git && scmResourceGroup == changes",
+          "group": "inline@3"
+        },
+        {
+          "command": "remoteGit.openDiff",
+          "when": "scmProvider == remote-git",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "remoteGit.stageFile",
+          "when": "scmProvider == remote-git && scmResourceGroup != staged",
+          "group": "1_modification@2"
+        },
+        {
+          "command": "remoteGit.unstageFile",
+          "when": "scmProvider == remote-git && scmResourceGroup == staged",
+          "group": "1_modification@2"
+        },
+        {
+          "command": "remoteGit.discardChanges",
+          "when": "scmProvider == remote-git && scmResourceGroup == changes",
+          "group": "1_modification@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Remote Git",
+      "properties": {
+        "remoteGit.pollInterval": {
+          "type": "number",
+          "default": 5000,
+          "description": "Interval in milliseconds to poll git status from the remote server."
+        },
+        "remoteGit.autoLocalPull": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically run git pull --rebase on the local clone after each remote commit."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "dependencies": {
+    "ssh2": "^1.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ssh2": "^1.15.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.3.0"
+  }
+}
