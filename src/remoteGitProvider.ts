@@ -293,29 +293,63 @@ export class RemoteGitProvider implements vscode.Disposable {
     }
 
     async checkoutBranch(): Promise<void> {
-        const result = await this.ssh.git(
-            'branch -a --format=%(refname:short)',
-        );
-        const branches = result.stdout
-            .split('\n')
-            .map(b => b.trim().replace(/^origin\//, ''))
-            .filter((b, i, arr) => b && arr.indexOf(b) === i); // unique
+        // Fetch first so remote-tracking refs are up to date
+        await this.ssh.git('fetch --prune');
 
-        const selected = await vscode.window.showQuickPick(branches, {
+        const [localResult, remoteResult] = await Promise.all([
+            this.ssh.git('branch --format=%(refname:short)'),
+            this.ssh.git('branch -r --format=%(refname:short)'),
+        ]);
+
+        const localBranches = localResult.stdout
+            .split('\n')
+            .map(b => b.trim())
+            .filter(Boolean);
+
+        const localSet = new Set(localBranches);
+
+        // Remote refs look like "origin/main" — strip the "origin/" prefix for
+        // display and checkout, but only include branches that don't already
+        // exist locally (those are shown in the local list).
+        const remoteBranches = remoteResult.stdout
+            .split('\n')
+            .map(b => b.trim())
+            .filter(b => b && !b.endsWith('/HEAD')); // skip origin/HEAD pointer
+
+        const remoteOnlyNames = remoteBranches
+            .map(b => b.replace(/^[^/]+\//, '')) // strip "origin/" prefix
+            .filter(b => !localSet.has(b));
+
+        const items: vscode.QuickPickItem[] = [
+            ...localBranches.map(b => ({
+                label: b,
+                description: 'local',
+                iconPath: new vscode.ThemeIcon('git-branch'),
+            })),
+            ...remoteOnlyNames.map(b => ({
+                label: b,
+                description: 'remote',
+                iconPath: new vscode.ThemeIcon('cloud'),
+            })),
+        ];
+
+        const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Select branch to checkout',
+            matchOnDescription: true,
         });
 
         if (!selected) {
             return;
         }
 
-        const checkoutResult = await this.ssh.git(`checkout ${shellQuote(selected)}`);
+        // For remote-only branches git will auto-create a local tracking branch
+        const checkoutResult = await this.ssh.git(`checkout ${shellQuote(selected.label)}`);
         if (checkoutResult.code !== 0) {
             vscode.window.showErrorMessage(
                 `Remote Git checkout failed: ${checkoutResult.stderr.trim()}`,
             );
         } else {
-            vscode.window.showInformationMessage(`Remote Git: switched to ${selected}`);
+            vscode.window.showInformationMessage(`Remote Git: switched to ${selected.label}`);
             await this.refresh();
         }
     }
