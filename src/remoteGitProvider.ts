@@ -329,11 +329,21 @@ export class RemoteGitProvider implements vscode.Disposable {
 
         execFile(
             'git',
-            ['-C', this.workspaceRoot, 'pull', '--rebase'],
-            (err) => {
-                if (err) {
+            ['-C', this.workspaceRoot, 'pull', '--rebase', '--autostash'],
+            (err, _stdout, stderr) => {
+                if (!err) {
+                    return;
+                }
+                const output = stderr.trim();
+                const isConflict = output.includes('CONFLICT') || output.includes('conflict');
+                if (isConflict) {
                     vscode.window.showWarningMessage(
-                        `Remote Git: local pull --rebase failed — ${err.message}`,
+                        'Remote Git: rebase conflict on local pull — resolve conflicts ' +
+                        'then run `git rebase --continue`, or `git rebase --abort` to cancel.',
+                    );
+                } else {
+                    vscode.window.showWarningMessage(
+                        `Remote Git: local pull --rebase failed — ${output || err.message}`,
                     );
                 }
             },
