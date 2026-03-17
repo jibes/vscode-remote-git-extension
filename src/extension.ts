@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import { loadConfig } from './config';
 import { SSHClient } from './sshClient';
-import { RemoteGitProvider } from './remoteGitProvider';
+import { RemoteGitProvider, FileNode } from './remoteGitProvider';
 
 let provider: RemoteGitProvider | undefined;
 let ssh: SSHClient | undefined;
+let treeView: vscode.TreeView<unknown> | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const folders = vscode.workspace.workspaceFolders;
@@ -15,9 +16,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const init = async (): Promise<void> => {
         provider?.dispose();
+        treeView?.dispose();
         ssh?.disconnect();
         provider = undefined;
+        treeView = undefined;
         ssh = undefined;
+        vscode.commands.executeCommand('setContext', 'remoteGit.active', false);
 
         let config;
         try {
@@ -42,6 +46,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
 
         provider = new RemoteGitProvider(ssh, config, workspaceRoot);
+        treeView = vscode.window.createTreeView('remoteGit.changesView', {
+            treeDataProvider: provider,
+            showCollapseAll: true,
+        });
+        context.subscriptions.push(treeView);
+        vscode.commands.executeCommand('setContext', 'remoteGit.active', true);
     };
 
     await init();
@@ -53,9 +63,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     watcher.onDidChange(() => init());
     watcher.onDidDelete(() => {
         provider?.dispose();
+        treeView?.dispose();
         ssh?.disconnect();
         provider = undefined;
+        treeView = undefined;
         ssh = undefined;
+        vscode.commands.executeCommand('setContext', 'remoteGit.active', false);
     });
     context.subscriptions.push(watcher);
 
@@ -84,38 +97,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ),
         vscode.commands.registerCommand(
             'remoteGit.stageFile',
-            (arg: vscode.Uri | vscode.SourceControlResourceState) => {
-                const uri = resolveUri(arg);
-                if (uri) {
-                    provider?.stageFile(decodeURIComponent(uri.path.replace(/^\//, '')));
-                }
+            (arg: FileNode | vscode.Uri) => {
+                const p = resolveFilePath(arg);
+                if (p) { provider?.stageFile(p); }
             },
         ),
         vscode.commands.registerCommand(
             'remoteGit.unstageFile',
-            (arg: vscode.Uri | vscode.SourceControlResourceState) => {
-                const uri = resolveUri(arg);
-                if (uri) {
-                    provider?.unstageFile(decodeURIComponent(uri.path.replace(/^\//, '')));
-                }
+            (arg: FileNode | vscode.Uri) => {
+                const p = resolveFilePath(arg);
+                if (p) { provider?.unstageFile(p); }
             },
         ),
         vscode.commands.registerCommand(
             'remoteGit.discardChanges',
-            (arg: vscode.Uri | vscode.SourceControlResourceState) => {
-                const uri = resolveUri(arg);
-                if (uri) {
-                    provider?.discardChanges(decodeURIComponent(uri.path.replace(/^\//, '')));
-                }
+            (arg: FileNode | vscode.Uri) => {
+                const p = resolveFilePath(arg);
+                if (p) { provider?.discardChanges(p); }
             },
         ),
         vscode.commands.registerCommand(
             'remoteGit.openDiff',
-            (arg: vscode.Uri | vscode.SourceControlResourceState) => {
+            (arg: FileNode | vscode.Uri) => {
                 const uri = resolveUri(arg);
-                if (uri) {
-                    provider?.openDiff(uri);
-                }
+                if (uri) { provider?.openDiff(uri); }
             },
         ),
     );
@@ -123,19 +128,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 export function deactivate(): void {
     provider?.dispose();
+    treeView?.dispose();
     ssh?.disconnect();
     provider = undefined;
+    treeView = undefined;
     ssh = undefined;
 }
 
-function resolveUri(
-    arg: vscode.Uri | vscode.SourceControlResourceState | undefined,
-): vscode.Uri | undefined {
-    if (!arg) {
-        return undefined;
-    }
-    if (arg instanceof vscode.Uri) {
-        return arg;
-    }
-    return (arg as vscode.SourceControlResourceState).resourceUri;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Extracts the remote-relative file path from either a FileNode (passed by
+ * view/item/context commands) or a plain Uri (passed programmatically).
+ */
+function resolveFilePath(arg: FileNode | vscode.Uri | undefined): string | undefined {
+    if (!arg) { return undefined; }
+    if (arg instanceof FileNode) { return arg.file.relativePath; }
+    if (arg instanceof vscode.Uri) { return decodeURIComponent(arg.path.replace(/^\//, '')); }
+    return undefined;
+}
+
+/**
+ * Extracts the remote-git:// Uri from either a FileNode or a plain Uri.
+ * Used by openDiff which needs the full URI (host + ref query params).
+ */
+function resolveUri(arg: FileNode | vscode.Uri | undefined): vscode.Uri | undefined {
+    if (!arg) { return undefined; }
+    if (arg instanceof FileNode) { return arg.resourceUri; }
+    if (arg instanceof vscode.Uri) { return arg; }
+    return undefined;
 }
