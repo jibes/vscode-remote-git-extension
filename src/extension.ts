@@ -1,11 +1,55 @@
 import * as vscode from 'vscode';
 import { loadConfig } from './config';
 import { SSHClient } from './sshClient';
-import { RemoteGitProvider, FileNode } from './remoteGitProvider';
+import { RemoteGitProvider, FileNode, TreeNode } from './remoteGitProvider';
+
+// ---------------------------------------------------------------------------
+// Persistent tree shell
+//
+// The TreeView is created ONCE and never destroyed.  A thin shell provider
+// delegates to the real RemoteGitProvider when connected and returns an empty
+// tree otherwise.  This avoids two problems:
+//   1. VS Code persists user-hidden state per view ID.  If we destroy and
+//      recreate the TreeView on reconnect, VS Code keeps it hidden.
+//   2. The multi-repo REPOSITORIES/CHANGES picker appears whenever two or
+//      more SourceControl providers are active.  By using only a TreeView
+//      (no SourceControl) we never trigger that mode.
+// ---------------------------------------------------------------------------
+
+class RemoteGitShell implements vscode.TreeDataProvider<TreeNode> {
+    private _inner: RemoteGitProvider | undefined;
+    private _listenerDisposable: vscode.Disposable | undefined;
+    private readonly _onDidChange = new vscode.EventEmitter<void>();
+    readonly onDidChangeTreeData = this._onDidChange.event;
+
+    setProvider(p: RemoteGitProvider | undefined): void {
+        this._listenerDisposable?.dispose();
+        this._inner = p;
+        if (p) {
+            // Forward change events from the real provider to this shell's
+            // emitter so the TreeView re-renders when git status updates.
+            this._listenerDisposable = p.onDidChangeTreeData(() =>
+                this._onDidChange.fire(),
+            );
+        }
+        this._onDidChange.fire();
+    }
+
+    getTreeItem(node: TreeNode): vscode.TreeItem {
+        return this._inner!.getTreeItem(node);
+    }
+
+    getChildren(node?: TreeNode): TreeNode[] {
+        return this._inner?.getChildren(node) ?? [];
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Extension state
+// ---------------------------------------------------------------------------
 
 let provider: RemoteGitProvider | undefined;
 let ssh: SSHClient | undefined;
-let treeView: vscode.TreeView<unknown> | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const folders = vscode.workspace.workspaceFolders;
@@ -14,24 +58,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     const workspaceRoot = folders[0].uri.fsPath;
 
+    // Create the shell and TreeView once — they live for the extension lifetime.
+    const shell = new RemoteGitShell();
+    const treeView = vscode.window.createTreeView('remoteGit.changesView', {
+        treeDataProvider: shell,
+        showCollapseAll: true,
+    });
+    context.subscriptions.push(treeView);
+
+    const setMessage = (msg: string | undefined) => {
+        treeView.message = msg;
+    };
+
     const init = async (): Promise<void> => {
         provider?.dispose();
-        treeView?.dispose();
         ssh?.disconnect();
         provider = undefined;
-        treeView = undefined;
         ssh = undefined;
-        vscode.commands.executeCommand('setContext', 'remoteGit.active', false);
+        shell.setProvider(undefined);
+        setMessage('Connecting…');
 
         let config;
         try {
             config = loadConfig(workspaceRoot);
         } catch (err: unknown) {
             vscode.window.showErrorMessage(`Remote Git: ${String(err)}`);
+            setMessage('Configuration error — check .vscode/remote-git.json');
             return;
         }
 
         if (!config) {
+            setMessage('No remote Git config found.');
             return;
         }
 
@@ -42,16 +99,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.window.showErrorMessage(
                 `Remote Git: SSH connection to ${config.host} failed — ${String(err)}`,
             );
+            setMessage(`SSH connection to ${config.host} failed`);
             return;
         }
 
         provider = new RemoteGitProvider(ssh, config, workspaceRoot);
-        treeView = vscode.window.createTreeView('remoteGit.changesView', {
-            treeDataProvider: provider,
-            showCollapseAll: true,
-        });
-        context.subscriptions.push(treeView);
-        vscode.commands.executeCommand('setContext', 'remoteGit.active', true);
+        shell.setProvider(provider);
+        setMessage(undefined); // clear message; tree content takes over
     };
 
     await init();
@@ -63,12 +117,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     watcher.onDidChange(() => init());
     watcher.onDidDelete(() => {
         provider?.dispose();
-        treeView?.dispose();
         ssh?.disconnect();
         provider = undefined;
-        treeView = undefined;
         ssh = undefined;
-        vscode.commands.executeCommand('setContext', 'remoteGit.active', false);
+        shell.setProvider(undefined);
+        setMessage('No remote Git config found.');
     });
     context.subscriptions.push(watcher);
 
@@ -128,10 +181,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 export function deactivate(): void {
     provider?.dispose();
-    treeView?.dispose();
     ssh?.disconnect();
     provider = undefined;
-    treeView = undefined;
     ssh = undefined;
 }
 
@@ -139,10 +190,6 @@ export function deactivate(): void {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Extracts the remote-relative file path from either a FileNode (passed by
- * view/item/context commands) or a plain Uri (passed programmatically).
- */
 function resolveFilePath(arg: FileNode | vscode.Uri | undefined): string | undefined {
     if (!arg) { return undefined; }
     if (arg instanceof FileNode) { return arg.file.relativePath; }
@@ -150,10 +197,6 @@ function resolveFilePath(arg: FileNode | vscode.Uri | undefined): string | undef
     return undefined;
 }
 
-/**
- * Extracts the remote-git:// Uri from either a FileNode or a plain Uri.
- * Used by openDiff which needs the full URI (host + ref query params).
- */
 function resolveUri(arg: FileNode | vscode.Uri | undefined): vscode.Uri | undefined {
     if (!arg) { return undefined; }
     if (arg instanceof FileNode) { return arg.resourceUri; }
