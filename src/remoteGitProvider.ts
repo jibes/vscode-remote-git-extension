@@ -188,6 +188,15 @@ export class RemoteGitProvider implements vscode.Disposable {
         await this.refresh();
     }
 
+    async unstageAll(): Promise<void> {
+        await this.ssh.git('restore --staged .');
+        for (const r of this.stagedGroup.resourceStates) {
+            const p = decodeURIComponent(r.resourceUri.path.replace(/^\//, ''));
+            this._invalidatePath(p, 'INDEX');
+        }
+        await this.refresh();
+    }
+
     async unstageFile(relativePath: string): Promise<void> {
         await this.ssh.git(`restore --staged -- ${shellQuote(relativePath)}`);
         this._invalidatePath(relativePath, 'INDEX');
@@ -205,6 +214,24 @@ export class RemoteGitProvider implements vscode.Disposable {
             // Fix: invalidate WORKING so any open diff view refreshes its
             // right-hand side to show the now-restored content.
             this._invalidatePath(relativePath, 'WORKING');
+            await this.refresh();
+        }
+    }
+
+    async discardAll(): Promise<void> {
+        const count = this.changesGroup.resourceStates.length;
+        const label = count === 1 ? '1 file' : `${count} files`;
+        const answer = await vscode.window.showWarningMessage(
+            `Discard all changes in ${label}? This cannot be undone.`,
+            { modal: true },
+            'Discard All Changes',
+        );
+        if (answer === 'Discard All Changes') {
+            await this.ssh.git('restore .');
+            for (const r of this.changesGroup.resourceStates) {
+                const p = decodeURIComponent(r.resourceUri.path.replace(/^\//, ''));
+                this._invalidatePath(p, 'WORKING');
+            }
             await this.refresh();
         }
     }

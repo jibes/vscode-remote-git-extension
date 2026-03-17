@@ -73,6 +73,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.commands.registerCommand('remoteGit.stageAll', () =>
             provider?.stageAll(),
         ),
+        vscode.commands.registerCommand('remoteGit.unstageAll', () =>
+            provider?.unstageAll(),
+        ),
+        vscode.commands.registerCommand('remoteGit.discardAll', () =>
+            provider?.discardAll(),
+        ),
         vscode.commands.registerCommand('remoteGit.viewLog', () =>
             provider?.viewLog(),
         ),
