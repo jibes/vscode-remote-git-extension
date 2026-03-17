@@ -59,6 +59,8 @@ export class RemoteGitProvider implements vscode.TreeDataProvider<TreeNode>, vsc
     private logChannel: vscode.OutputChannel | undefined;
     private pollTimer: ReturnType<typeof setInterval> | null = null;
     private disposed = false;
+    /** Prevents the bare-repo warning from being shown on every poll tick. */
+    private _bareRepoWarned = false;
 
     constructor(
         private readonly ssh: SSHClient,
@@ -162,7 +164,7 @@ export class RemoteGitProvider implements vscode.TreeDataProvider<TreeNode>, vsc
             log(`refresh: status code=${statusResult.code}`);
             if (statusResult.code !== 0) {
                 log(`refresh: git status failed — stderr=${statusResult.stderr.trim()}`);
-                this._setStatus('$(error) Remote Git: not a git repo');
+                await this._diagnoseGitFailure();
                 return;
             }
 
@@ -182,6 +184,39 @@ export class RemoteGitProvider implements vscode.TreeDataProvider<TreeNode>, vsc
             log(`refresh: exception — ${String(err)}`);
             this._setStatus('$(error) Remote Git: disconnected');
         }
+    }
+
+    /**
+     * Called when `git status --porcelain` fails.  Runs a bare-repository
+     * check to distinguish "wrong path type" (bare repo, hosting service that
+     * rejects shell commands) from a genuine "not a git repo" situation.
+     *
+     * Bare-repo detection is generic: if `git rev-parse --is-bare-repository`
+     * returns "true" the remote path is a bare clone with no working tree.
+     * If the command itself is rejected (e.g. a hosting service git-shell that
+     * only allows git-protocol commands) both status and the bare check will
+     * fail, and the debug channel will contain the remote's rejection message.
+     */
+    private async _diagnoseGitFailure(): Promise<void> {
+        try {
+            const bareResult = await this.ssh.git('rev-parse --is-bare-repository');
+            if (bareResult.code === 0 && bareResult.stdout.trim() === 'true') {
+                log(`refresh: remote path is a bare repository — remotePath should point to a working-tree clone`);
+                this._setStatus('$(error) Remote Git: bare repository');
+                if (!this._bareRepoWarned) {
+                    this._bareRepoWarned = true;
+                    vscode.window.showWarningMessage(
+                        'Remote Git: the remote path is a bare repository. ' +
+                        'Set remotePath in .vscode/remote-git.json to point to a working-tree clone.',
+                    );
+                }
+                return;
+            }
+            log(`refresh: bare check returned code=${bareResult.code} stdout=${bareResult.stdout.trim()}`);
+        } catch (err) {
+            log(`refresh: bare check exception — ${String(err)}`);
+        }
+        this._setStatus('$(error) Remote Git: not a git repo');
     }
 
     private _setStatus(text: string): void {
