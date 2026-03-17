@@ -17,6 +17,15 @@
   ],
   "main": "./out/extension",
   "contributes": {
+    "views": {
+      "scm": [
+        {
+          "id": "remoteGit.changesView",
+          "name": "Remote Git",
+          "when": "remoteGit.active"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "remoteGit.refresh",
@@ -80,110 +89,138 @@
       }
     ],
     "menus": {
-      "scm/title": [
+      "view/title": [
         {
           "command": "remoteGit.refresh",
-          "when": "scmProvider == remote-git",
+          "when": "view == remoteGit.changesView",
           "group": "navigation@1"
         },
         {
           "command": "remoteGit.commit",
-          "when": "scmProvider == remote-git",
+          "when": "view == remoteGit.changesView",
           "group": "navigation@2"
         },
         {
           "command": "remoteGit.viewLog",
-          "when": "scmProvider == remote-git",
-          "group": "1_commands@1"
+          "when": "view == remoteGit.changesView",
+          "group": "overflow@1"
         },
         {
           "command": "remoteGit.stageAll",
-          "when": "scmProvider == remote-git",
-          "group": "1_commands@2"
+          "when": "view == remoteGit.changesView",
+          "group": "overflow@2"
         }
       ],
-      "scm/resourceGroup/context": [
+      "view/item/context": [
         {
           "command": "remoteGit.unstageAll",
-          "when": "scmProvider == remote-git && scmResourceGroup == staged",
+          "when": "view == remoteGit.changesView && viewItem == staged",
           "group": "inline@1"
         },
         {
+          "command": "remoteGit.unstageAll",
+          "when": "view == remoteGit.changesView && viewItem == staged",
+          "group": "1_modification@1"
+        },
+        {
           "command": "remoteGit.stageAll",
-          "when": "scmProvider == remote-git && scmResourceGroup == changes",
+          "when": "view == remoteGit.changesView && viewItem == changes",
           "group": "inline@1"
         },
         {
           "command": "remoteGit.discardAll",
-          "when": "scmProvider == remote-git && scmResourceGroup == changes",
+          "when": "view == remoteGit.changesView && viewItem == changes",
           "group": "inline@2"
         },
         {
           "command": "remoteGit.stageAll",
-          "when": "scmProvider == remote-git && scmResourceGroup == untracked",
-          "group": "inline@1"
-        },
-        {
-          "command": "remoteGit.unstageAll",
-          "when": "scmProvider == remote-git && scmResourceGroup == staged",
-          "group": "1_modification@1"
-        },
-        {
-          "command": "remoteGit.stageAll",
-          "when": "scmProvider == remote-git && (scmResourceGroup == changes || scmResourceGroup == untracked)",
+          "when": "view == remoteGit.changesView && viewItem == changes",
           "group": "1_modification@1"
         },
         {
           "command": "remoteGit.discardAll",
-          "when": "scmProvider == remote-git && scmResourceGroup == changes",
+          "when": "view == remoteGit.changesView && viewItem == changes",
           "group": "1_modification@2"
-        }
-      ],
-      "scm/resourceState/context": [
+        },
+        {
+          "command": "remoteGit.stageAll",
+          "when": "view == remoteGit.changesView && viewItem == untracked",
+          "group": "inline@1"
+        },
+        {
+          "command": "remoteGit.stageAll",
+          "when": "view == remoteGit.changesView && viewItem == untracked",
+          "group": "1_modification@1"
+        },
         {
           "command": "remoteGit.openDiff",
-          "when": "scmProvider == remote-git",
+          "when": "view == remoteGit.changesView && viewItem == file-staged",
           "group": "inline@1"
-        },
-        {
-          "command": "remoteGit.stageFile",
-          "when": "scmProvider == remote-git && scmResourceGroup == changes",
-          "group": "inline@2"
-        },
-        {
-          "command": "remoteGit.stageFile",
-          "when": "scmProvider == remote-git && scmResourceGroup == untracked",
-          "group": "inline@2"
         },
         {
           "command": "remoteGit.unstageFile",
-          "when": "scmProvider == remote-git && scmResourceGroup == staged",
+          "when": "view == remoteGit.changesView && viewItem == file-staged",
+          "group": "inline@2"
+        },
+        {
+          "command": "remoteGit.openDiff",
+          "when": "view == remoteGit.changesView && viewItem == file-staged",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "remoteGit.unstageFile",
+          "when": "view == remoteGit.changesView && viewItem == file-staged",
+          "group": "1_modification@2"
+        },
+        {
+          "command": "remoteGit.openDiff",
+          "when": "view == remoteGit.changesView && viewItem == file-changes",
+          "group": "inline@1"
+        },
+        {
+          "command": "remoteGit.stageFile",
+          "when": "view == remoteGit.changesView && viewItem == file-changes",
           "group": "inline@2"
         },
         {
           "command": "remoteGit.discardChanges",
-          "when": "scmProvider == remote-git && scmResourceGroup == changes",
+          "when": "view == remoteGit.changesView && viewItem == file-changes",
           "group": "inline@3"
         },
         {
           "command": "remoteGit.openDiff",
-          "when": "scmProvider == remote-git",
+          "when": "view == remoteGit.changesView && viewItem == file-changes",
           "group": "1_modification@1"
         },
         {
           "command": "remoteGit.stageFile",
-          "when": "scmProvider == remote-git && scmResourceGroup != staged",
-          "group": "1_modification@2"
-        },
-        {
-          "command": "remoteGit.unstageFile",
-          "when": "scmProvider == remote-git && scmResourceGroup == staged",
+          "when": "view == remoteGit.changesView && viewItem == file-changes",
           "group": "1_modification@2"
         },
         {
           "command": "remoteGit.discardChanges",
-          "when": "scmProvider == remote-git && scmResourceGroup == changes",
+          "when": "view == remoteGit.changesView && viewItem == file-changes",
           "group": "1_modification@3"
+        },
+        {
+          "command": "remoteGit.openDiff",
+          "when": "view == remoteGit.changesView && viewItem == file-untracked",
+          "group": "inline@1"
+        },
+        {
+          "command": "remoteGit.stageFile",
+          "when": "view == remoteGit.changesView && viewItem == file-untracked",
+          "group": "inline@2"
+        },
+        {
+          "command": "remoteGit.openDiff",
+          "when": "view == remoteGit.changesView && viewItem == file-untracked",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "remoteGit.stageFile",
+          "when": "view == remoteGit.changesView && viewItem == file-untracked",
+          "group": "1_modification@2"
         }
       ]
     },
