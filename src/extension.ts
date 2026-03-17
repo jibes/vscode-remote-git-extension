@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { loadConfig, readLocalGitRemoteUrl, detectHostingService } from './config';
 import { SSHClient } from './sshClient';
 import { RemoteGitProvider, FileNode, TreeNode } from './remoteGitProvider';
+import * as logger from './logger';
 
 // ---------------------------------------------------------------------------
 // Persistent tree shell
@@ -58,6 +59,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     const workspaceRoot = folders[0].uri.fsPath;
 
+    // -------------------------------------------------------------------------
+    // Debug logger — created once and reused; enabled/disabled by the setting
+    // -------------------------------------------------------------------------
+
+    let debugChannel: vscode.OutputChannel | undefined;
+
+    const refreshLogger = (): void => {
+        const enabled = vscode.workspace.getConfiguration('remoteGit').get<boolean>('debug', false);
+        if (enabled) {
+            if (!debugChannel) {
+                debugChannel = vscode.window.createOutputChannel('Remote Git (Debug)');
+                context.subscriptions.push(debugChannel);
+            }
+            logger.setLogFn(line => debugChannel!.appendLine(line));
+            debugChannel.show(/* preserveFocus */ true);
+            logger.log('Remote Git debug mode enabled');
+        } else {
+            logger.setLogFn(undefined);
+        }
+    };
+    refreshLogger();
+
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('remoteGit.debug')) {
+                refreshLogger();
+            }
+        }),
+    );
+
     // Create the shell and TreeView once — they live for the extension lifetime.
     const shell = new RemoteGitShell();
     const treeView = vscode.window.createTreeView('remoteGit.changesView', {
@@ -78,9 +109,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         shell.setProvider(undefined);
         setMessage('Connecting…');
 
+        logger.log('init: starting');
+
+        // Read VS Code workspace settings so they can fill in defaults when no
+        // config file sets these fields.
+        const vsSettings = vscode.workspace.getConfiguration('remoteGit');
+
         let config;
         try {
-            config = loadConfig(workspaceRoot);
+            config = loadConfig(workspaceRoot, {
+                pollInterval:  vsSettings.get<number>('pollInterval'),
+                autoLocalPull: vsSettings.get<boolean>('autoLocalPull'),
+            });
         } catch (err: unknown) {
             vscode.window.showErrorMessage(`Remote Git: ${String(err)}`);
             setMessage('Configuration error — check .vscode/remote-git.json');
@@ -98,8 +138,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             } else {
                 setMessage('No remote Git config found.');
             }
+            logger.log('init: no config resolved — stopping');
             return;
         }
+
+        logger.log(`init: config = ${JSON.stringify(config)}`);
 
         ssh = new SSHClient(config);
         try {
@@ -111,6 +154,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             setMessage(`SSH connection to ${config.host} failed`);
             return;
         }
+
+        logger.log('init: SSH connection established');
 
         provider = new RemoteGitProvider(ssh, config, workspaceRoot);
         shell.setProvider(provider);
