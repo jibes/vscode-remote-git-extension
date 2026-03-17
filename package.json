@@ -235,6 +235,11 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically run git pull --rebase on the local clone after each remote commit."
+        },
+        "remoteGit.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable verbose debug logging in the 'Remote Git (Debug)' output channel. Shows config resolution, SSH connection steps, raw git command output, and parsed file lists."
         }
       }
     }

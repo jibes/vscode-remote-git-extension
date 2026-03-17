@@ -5,6 +5,7 @@ import { execFile } from 'child_process';
 import { SSHClient } from './sshClient';
 import { RemoteGitConfig } from './config';
 import { RemoteGitContentProvider, remoteGitUri } from './diffContentProvider';
+import { log } from './logger';
 
 export interface FileStatus {
     relativePath: string;
@@ -149,6 +150,7 @@ export class RemoteGitProvider implements vscode.TreeDataProvider<TreeNode>, vsc
     async refresh(): Promise<void> {
         if (this.disposed) { return; }
 
+        log(`refresh: remotePath=${this.config.remotePath}`);
         try {
             const [statusResult, branchResult] = await Promise.all([
                 this.ssh.git('status --porcelain'),
@@ -157,22 +159,27 @@ export class RemoteGitProvider implements vscode.TreeDataProvider<TreeNode>, vsc
 
             if (this.disposed) { return; }
 
+            log(`refresh: status code=${statusResult.code}`);
             if (statusResult.code !== 0) {
+                log(`refresh: git status failed — stderr=${statusResult.stderr.trim()}`);
                 this._setStatus('$(error) Remote Git: not a git repo');
                 return;
             }
 
+            log(`refresh: raw output=${JSON.stringify(statusResult.stdout.slice(0, 500))}`);
             const files = parseGitStatus(statusResult.stdout);
-            this.stagedFiles   = files.filter(f => f.group === 'staged');
-            this.changesFiles  = files.filter(f => f.group === 'changes');
+            this.stagedFiles    = files.filter(f => f.group === 'staged');
+            this.changesFiles   = files.filter(f => f.group === 'changes');
             this.untrackedFiles = files.filter(f => f.group === 'untracked');
+            log(`refresh: parsed ${files.length} files — staged=${this.stagedFiles.length} changes=${this.changesFiles.length} untracked=${this.untrackedFiles.length}`);
 
             const branch = branchResult.stdout.trim() || 'HEAD';
             const count = files.length;
             this._setStatus(`$(git-branch) ${branch}${count > 0 ? ` (${count})` : ''}`);
 
             this._onDidChangeTreeData.fire();
-        } catch {
+        } catch (err) {
+            log(`refresh: exception — ${String(err)}`);
             this._setStatus('$(error) Remote Git: disconnected');
         }
     }

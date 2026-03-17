@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { RemoteGitConfig } from './config';
+import { log } from './logger';
 
 export interface ExecResult {
     stdout: string;
@@ -39,22 +40,26 @@ export class SSHClient {
 
     private async _doConnect(): Promise<void> {
         const connectConfig = await this._buildConnectConfig();
+        log(`SSH: connecting to ${this.config.username}@${this.config.host}:${this.config.port ?? 22}`);
 
         return new Promise<void>((resolve, reject) => {
             const client = new ssh2.Client();
 
             client.on('ready', () => {
+                log(`SSH: connected to ${this.config.host}`);
                 this.client = client;
                 this._connected = true;
                 resolve();
             });
 
             client.on('error', (err) => {
+                log(`SSH: connection error — ${err.message}`);
                 this._connected = false;
                 reject(err);
             });
 
             client.on('close', () => {
+                log(`SSH: connection closed`);
                 this._connected = false;
                 this.client = null;
             });
@@ -110,6 +115,7 @@ export class SSHClient {
             await this.connect();
         }
 
+        log(`SSH exec: ${command}`);
         return new Promise<ExecResult>((resolve, reject) => {
             if (!this.client) {
                 reject(new Error('SSH client not connected'));
@@ -134,7 +140,11 @@ export class SSHClient {
                 });
 
                 stream.on('close', (code: number) => {
-                    resolve({ stdout, stderr, code: code ?? 0 });
+                    const result: ExecResult = { stdout, stderr, code: code ?? 0 };
+                    log(`SSH result: code=${result.code}` +
+                        ` stdout=${JSON.stringify(result.stdout.slice(0, 300))}` +
+                        (result.stderr ? ` stderr=${JSON.stringify(result.stderr.slice(0, 200))}` : ''));
+                    resolve(result);
                 });
             });
         });
