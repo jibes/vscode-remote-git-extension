@@ -21,8 +21,7 @@
       "scm": [
         {
           "id": "remoteGit.changesView",
-          "name": "Remote Git",
-          "when": "remoteGit.active"
+          "name": "Remote Git"
         }
       ]
     },
