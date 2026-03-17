@@ -143,9 +143,13 @@ export class SSHClient {
     /**
      * Executes a git command scoped to the configured remotePath.
      * Equivalent to: git -C <remotePath> <args>
+     *
+     * Paths starting with ~/ are emitted as "$HOME/…" inside double quotes so
+     * the remote shell expands $HOME correctly.  Single-quoted strings do not
+     * expand ~ or $HOME, which is why a separate quoting path is needed.
      */
     async git(args: string): Promise<ExecResult> {
-        return this.exec(`git -C ${shellQuote(this.config.remotePath)} ${args}`);
+        return this.exec(`git -C ${quoteRemotePath(this.config.remotePath)} ${args}`);
     }
 
     disconnect(): void {
@@ -159,4 +163,23 @@ export class SSHClient {
 
 function shellQuote(s: string): string {
     return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Quotes a remote filesystem path for embedding in a shell command.
+ *
+ * Absolute paths (/foo/bar)  → single-quoted  (safe, no expansion needed)
+ * Home-relative paths (~/…)  → "$HOME/…"      (double-quoted; shell expands $HOME)
+ */
+function quoteRemotePath(p: string): string {
+    if (p.startsWith('~/')) {
+        // Escape characters that are meaningful inside double quotes.
+        const inner = p.slice(2)
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"')
+            .replace(/\$/g, '\\$')
+            .replace(/`/g, '\\`');
+        return `"$HOME/${inner}"`;
+    }
+    return shellQuote(p);
 }

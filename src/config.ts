@@ -111,17 +111,51 @@ export function loadConfig(workspaceRoot: string): RemoteGitConfig | null {
 
 /**
  * Tries to extract SSH connection details from the local git remote named
- * "origin". Returns null if there is no local .git, no origin remote, or the
- * remote URL is not an SSH URL (e.g. https://github.com/…).
+ * "origin". Returns null if there is no local .git, no origin remote, the
+ * remote URL is not an SSH URL, or the host is a known git hosting service.
  */
 function parseLocalGitRemote(workspaceRoot: string): RawConfig | null {
+    const url = readLocalGitRemoteUrl(workspaceRoot);
+    return url ? parseSSHUrl(url) : null;
+}
+
+/**
+ * Git hosting services that are not SSH development servers.
+ * Connections to these hosts are blocked — users must supply an explicit
+ * `.vscode/remote-git.json` that points at their actual dev server instead.
+ */
+const HOSTING_SERVICES: Record<string, string> = {
+    'github.com':     'GitHub',
+    'gitlab.com':     'GitLab',
+    'bitbucket.org':  'Bitbucket',
+    'codeberg.org':   'Codeberg',
+    'git.sr.ht':      'Sourcehut',
+};
+
+/**
+ * Returns the display name of a known git hosting service if the URL belongs
+ * to one, or null if it is an ordinary SSH server URL.
+ */
+export function detectHostingService(url: string): string | null {
+    for (const [host, name] of Object.entries(HOSTING_SERVICES)) {
+        if (url.includes(host)) {
+            return name;
+        }
+    }
+    return null;
+}
+
+/**
+ * Returns the raw `origin` remote URL from the local git repo, or null.
+ * Used by the extension to surface a helpful message when a hosting-service
+ * URL is detected but no dev-server config exists.
+ */
+export function readLocalGitRemoteUrl(workspaceRoot: string): string | null {
     if (!fs.existsSync(path.join(workspaceRoot, '.git'))) {
         return null;
     }
-
-    let remoteUrl: string;
     try {
-        remoteUrl = execFileSync(
+        return execFileSync(
             'git',
             ['-C', workspaceRoot, 'remote', 'get-url', 'origin'],
             { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] },
@@ -129,8 +163,6 @@ function parseLocalGitRemote(workspaceRoot: string): RawConfig | null {
     } catch {
         return null;
     }
-
-    return parseSSHUrl(remoteUrl);
 }
 
 /**
@@ -138,32 +170,47 @@ function parseLocalGitRemote(workspaceRoot: string): RawConfig | null {
  *
  * Supported formats:
  *   ssh://[user@]host[:port]/path
- *   [user@]host:/absolute/path      (SCP-style, absolute only)
+ *   [user@]host:/absolute/path      (SCP-style, absolute path)
+ *   [user@]host:relative/path       (SCP-style, stored as ~/relative/path;
+ *                                    the shell on the remote server resolves ~)
  *
- * Returns null for non-SSH URLs (https://, git://, file://, relative SCP paths).
+ * Returns null for:
+ *   - non-SSH URLs (https://, git://, file://, …)
+ *   - known git hosting services (GitHub, GitLab, Bitbucket, …) — these
+ *     are not SSH dev servers; require explicit .vscode/remote-git.json
  */
 export function parseSSHUrl(url: string): RawConfig | null {
     // ssh://[user@]host[:port]/path
     const sshMatch = url.match(/^ssh:\/\/(?:([^@]+)@)?([^:/]+)(?::(\d+))?(\/[^?#]*)/);
     if (sshMatch) {
+        const host = sshMatch[2];
+        if (HOSTING_SERVICES[host]) { return null; }
         return {
             username: sshMatch[1] ?? 'git',
-            host: sshMatch[2],
+            host,
             port: sshMatch[3] ? parseInt(sshMatch[3], 10) : undefined,
             remotePath: sshMatch[4].replace(/\.git$/, '') || '/',
         };
     }
 
-    // SCP-style [user@]host:/absolute/path  (relative paths like host:repo are skipped —
-    // we can't resolve them without knowing the remote home directory)
-    const scpMatch = url.match(/^(?:([^@/]+)@)?([^:/]+):(\/[^?#]*)/);
+    // URLs with any other scheme (https://, git://, file://, …) — skip.
+    if (url.includes('://')) { return null; }
+
+    // SCP-style [user@]host:path  (absolute or relative)
+    const scpMatch = url.match(/^(?:([^@/]+)@)?([^:/]+):(.+)/);
     if (scpMatch) {
+        const host = scpMatch[2];
+        if (HOSTING_SERVICES[host]) { return null; }
+        const rawPath = scpMatch[3].replace(/\.git$/, '').trim();
+        // Absolute path (/foo/bar): use as-is.
+        // Relative path (foo/bar): prefix with ~/ — the remote shell expands it.
+        const remotePath = rawPath.startsWith('/') ? rawPath : `~/${rawPath}`;
         return {
             username: scpMatch[1] ?? 'git',
-            host: scpMatch[2],
-            remotePath: scpMatch[3].replace(/\.git$/, ''),
+            host,
+            remotePath,
         };
     }
 
-    return null; // https://, file://, etc.
+    return null; // unrecognised format
 }
