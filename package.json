@@ -49,8 +49,20 @@
         "category": "Remote Git"
       },
       {
+        "command": "remoteGit.unstageAll",
+        "title": "Unstage All",
+        "icon": "$(remove)",
+        "category": "Remote Git"
+      },
+      {
         "command": "remoteGit.discardChanges",
         "title": "Discard Changes",
+        "icon": "$(discard)",
+        "category": "Remote Git"
+      },
+      {
+        "command": "remoteGit.discardAll",
+        "title": "Discard All Changes",
         "icon": "$(discard)",
         "category": "Remote Git"
       },
@@ -75,7 +87,7 @@
           "group": "navigation@1"
         },
         {
-          "command": "remoteGit.stageAll",
+          "command": "remoteGit.commit",
           "when": "scmProvider == remote-git",
           "group": "navigation@2"
         },
@@ -83,6 +95,48 @@
           "command": "remoteGit.viewLog",
           "when": "scmProvider == remote-git",
           "group": "1_commands@1"
+        },
+        {
+          "command": "remoteGit.stageAll",
+          "when": "scmProvider == remote-git",
+          "group": "1_commands@2"
+        }
+      ],
+      "scm/resourceGroup/context": [
+        {
+          "command": "remoteGit.unstageAll",
+          "when": "scmProvider == remote-git && scmResourceGroup == staged",
+          "group": "inline@1"
+        },
+        {
+          "command": "remoteGit.stageAll",
+          "when": "scmProvider == remote-git && scmResourceGroup == changes",
+          "group": "inline@1"
+        },
+        {
+          "command": "remoteGit.discardAll",
+          "when": "scmProvider == remote-git && scmResourceGroup == changes",
+          "group": "inline@2"
+        },
+        {
+          "command": "remoteGit.stageAll",
+          "when": "scmProvider == remote-git && scmResourceGroup == untracked",
+          "group": "inline@1"
+        },
+        {
+          "command": "remoteGit.unstageAll",
+          "when": "scmProvider == remote-git && scmResourceGroup == staged",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "remoteGit.stageAll",
+          "when": "scmProvider == remote-git && (scmResourceGroup == changes || scmResourceGroup == untracked)",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "remoteGit.discardAll",
+          "when": "scmProvider == remote-git && scmResourceGroup == changes",
+          "group": "1_modification@2"
         }
       ],
       "scm/resourceState/context": [
