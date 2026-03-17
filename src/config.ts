@@ -23,19 +23,43 @@ interface RawConfig {
 }
 
 /**
- * Loads Remote Git config using a three-level priority chain:
+ * Loads Remote Git config using a four-level priority chain:
  *
  *  1. .vscode/remote-git.json          — explicit, wins over everything
  *  2. .vscode/remote-sync.json         — Mutagen/Remote Sync extension settings
- *  3. Local git remote (origin)        — SSH URL parsed from `git remote get-url origin`
+ *  3. .vscode/sftp.json                — SFTP extension (natizyskunk.sftp) settings
+ *  4. Local git remote (origin)        — SSH URL parsed from `git remote get-url origin`
  *
  * Higher-priority sources override individual fields; they don't have to be
  * complete — e.g. remote-git.json can just override `remotePath` while
  * host/username come from the git remote.
  */
 export function loadConfig(workspaceRoot: string): RemoteGitConfig | null {
-    // --- Layer 3 (lowest): local git remote SSH URL --------------------------
+    // --- Layer 4 (lowest): local git remote SSH URL --------------------------
     let merged: RawConfig = parseLocalGitRemote(workspaceRoot) ?? {};
+
+    // --- Layer 3: sftp.json --------------------------------------------------
+    const sftpConfigPath = path.join(workspaceRoot, '.vscode', 'sftp.json');
+    if (fs.existsSync(sftpConfigPath)) {
+        try {
+            const raw = JSON.parse(fs.readFileSync(sftpConfigPath, 'utf8')) as {
+                host?: string;
+                port?: number;
+                username?: string;
+                remotePath?: string;
+                privateKeyPath?: string;
+            };
+            const sftpFields: RawConfig = {};
+            if (raw.host)           { sftpFields.host = raw.host; }
+            if (raw.port)           { sftpFields.port = raw.port; }
+            if (raw.username)       { sftpFields.username = raw.username; }
+            if (raw.remotePath)     { sftpFields.remotePath = raw.remotePath; }
+            if (raw.privateKeyPath) { sftpFields.identityFile = raw.privateKeyPath; }
+            merged = { ...merged, ...sftpFields };
+        } catch {
+            // Ignore malformed sftp config
+        }
+    }
 
     // --- Layer 2: remote-sync.json -------------------------------------------
     const syncConfigPath = path.join(workspaceRoot, '.vscode', 'remote-sync.json');
