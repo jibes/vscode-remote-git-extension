@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { loadConfig, readLocalGitRemoteUrl, detectHostingService } from './config';
+import { loadConfig, readLocalGitRemoteUrl } from './config';
 import { SSHClient } from './sshClient';
 import { RemoteGitProvider, FileNode, TreeNode } from './remoteGitProvider';
 import * as logger from './logger';
@@ -129,16 +129,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         if (!config) {
             const remoteUrl = readLocalGitRemoteUrl(workspaceRoot);
-            const service   = remoteUrl ? detectHostingService(remoteUrl) : null;
-            if (service) {
-                setMessage(
-                    `${service} repo detected — add .vscode/remote-git.json ` +
-                    `with your remote dev server's host, username, and remotePath`,
-                );
-            } else {
-                setMessage('No remote Git config found.');
-            }
-            logger.log('init: no config resolved — stopping');
+            logger.log(`init: no config resolved — git remote = ${remoteUrl ?? '(none)'}`);
+            setMessage('No remote Git config found.');
             return;
         }
 

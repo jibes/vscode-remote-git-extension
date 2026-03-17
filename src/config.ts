@@ -154,32 +154,6 @@ function parseLocalGitRemote(workspaceRoot: string): RawConfig | null {
 }
 
 /**
- * Git hosting services that are not SSH development servers.
- * Connections to these hosts are blocked — users must supply an explicit
- * `.vscode/remote-git.json` that points at their actual dev server instead.
- */
-const HOSTING_SERVICES: Record<string, string> = {
-    'github.com':     'GitHub',
-    'gitlab.com':     'GitLab',
-    'bitbucket.org':  'Bitbucket',
-    'codeberg.org':   'Codeberg',
-    'git.sr.ht':      'Sourcehut',
-};
-
-/**
- * Returns the display name of a known git hosting service if the URL belongs
- * to one, or null if it is an ordinary SSH server URL.
- */
-export function detectHostingService(url: string): string | null {
-    for (const [host, name] of Object.entries(HOSTING_SERVICES)) {
-        if (url.includes(host)) {
-            return name;
-        }
-    }
-    return null;
-}
-
-/**
  * Returns the raw `origin` remote URL from the local git repo, or null.
  * Used by the extension to surface a helpful message when a hosting-service
  * URL is detected but no dev-server config exists.
@@ -211,10 +185,9 @@ export function readLocalGitRemoteUrl(workspaceRoot: string): string | null {
  * When no username is present the local OS username is used as the default
  * (matching the behaviour of plain `ssh host` and `git clone host:path`).
  *
- * Returns null for:
- *   - non-SSH URLs (https://, git://, file://, …)
- *   - known git hosting services (GitHub, GitLab, Bitbucket, …) — these
- *     are not SSH dev servers; require explicit .vscode/remote-git.json
+ * Returns null for non-SSH URLs (https://, git://, file://, …).
+ * Whether the resolved remote path is a usable working tree is checked at
+ * runtime in RemoteGitProvider.refresh() via `git rev-parse --is-bare-repository`.
  */
 export function parseSSHUrl(url: string): RawConfig | null {
     const localUser = os.userInfo().username;
@@ -222,14 +195,9 @@ export function parseSSHUrl(url: string): RawConfig | null {
     // ssh://[user@]host[:port]/path
     const sshMatch = url.match(/^ssh:\/\/(?:([^@]+)@)?([^:/]+)(?::(\d+))?(\/[^?#]*)/);
     if (sshMatch) {
-        const host = sshMatch[2];
-        if (HOSTING_SERVICES[host]) {
-            log(`parseSSHUrl: blocked — ${host} is a known hosting service`);
-            return null;
-        }
         const result: RawConfig = {
             username: sshMatch[1] ?? localUser,
-            host,
+            host: sshMatch[2],
             port: sshMatch[3] ? parseInt(sshMatch[3], 10) : undefined,
             remotePath: sshMatch[4].replace(/\.git$/, '') || '/',
         };
@@ -246,18 +214,13 @@ export function parseSSHUrl(url: string): RawConfig | null {
     // SCP-style [user@]host:path  (absolute or relative)
     const scpMatch = url.match(/^(?:([^@/]+)@)?([^:/]+):(.+)/);
     if (scpMatch) {
-        const host = scpMatch[2];
-        if (HOSTING_SERVICES[host]) {
-            log(`parseSSHUrl: blocked — ${host} is a known hosting service`);
-            return null;
-        }
         const rawPath = scpMatch[3].replace(/\.git$/, '').trim();
         // Absolute path (/foo/bar): use as-is.
         // Relative path (foo/bar): prefix with ~/ — the remote shell expands it.
         const remotePath = rawPath.startsWith('/') ? rawPath : `~/${rawPath}`;
         const result: RawConfig = {
             username: scpMatch[1] ?? localUser,
-            host,
+            host: scpMatch[2],
             remotePath,
         };
         log(`parseSSHUrl: SCP → ${JSON.stringify(result)}`);
