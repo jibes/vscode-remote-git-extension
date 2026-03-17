@@ -12,6 +12,7 @@
   "activationEvents": [
     "workspaceContains:.vscode/remote-git.json",
     "workspaceContains:.vscode/remote-sync.json",
+    "workspaceContains:.vscode/sftp.json",
     "workspaceContains:.git"
   ],
   "main": "./out/extension",
