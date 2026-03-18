@@ -315,19 +315,13 @@ export class RemoteGitProvider implements vscode.TreeDataProvider<TreeNode>, vsc
         await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
     }
 
-    async commit(): Promise<void> {
-        const message = await vscode.window.showInputBox({
-            prompt: 'Commit message',
-            placeHolder: 'Message (Enter to commit on remote)',
-            ignoreFocusOut: true,
-        });
-
-        if (message === undefined) { return; } // cancelled
+    async commit(message: string): Promise<boolean> {
         if (!message.trim()) {
             vscode.window.showErrorMessage('Remote Git: enter a commit message first');
-            return;
+            return false;
         }
 
+        let success = false;
         await vscode.window.withProgress(
             { location: { viewId: 'remoteGit.changesView' }, title: 'Committing on remote…' },
             async () => {
@@ -341,8 +335,10 @@ export class RemoteGitProvider implements vscode.TreeDataProvider<TreeNode>, vsc
                 vscode.window.showInformationMessage('Remote Git: commit successful');
                 if (this.config.autoLocalPull) { this._tryLocalPull(); }
                 await this.refresh();
+                success = true;
             },
         );
+        return success;
     }
 
     async viewLog(): Promise<void> {
