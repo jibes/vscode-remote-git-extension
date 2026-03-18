@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { execFile } from 'child_process';
-import { SSHClient } from './sshClient';
+import { SSHClient, shellQuote } from './sshClient';
 import { RemoteGitConfig } from './config';
 import { RemoteGitContentProvider, remoteGitUri } from './diffContentProvider';
 import { log } from './logger';
@@ -458,6 +458,3 @@ function statusColor(code: string): vscode.ThemeColor | undefined {
     return colorMap[code] ? new vscode.ThemeColor(colorMap[code]) : undefined;
 }
 
-function shellQuote(s: string): string {
-    return `'${s.replace(/'/g, "'\\''")}'`;
-}

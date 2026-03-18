@@ -76,19 +76,17 @@ export class SSHClient {
             readyTimeout: 15000,
         };
 
-        // Try configured identity file first, then common key locations
-        const keyPaths = this.config.identityFile
-            ? [this.config.identityFile]
+        // Try configured key first, then common key locations
+        const keyPaths = this.config.privateKeyPath
+            ? [this.config.privateKeyPath]
             : KEY_CANDIDATES.map(k => path.join(os.homedir(), '.ssh', k));
 
         for (const keyPath of keyPaths) {
-            if (fs.existsSync(keyPath)) {
-                try {
-                    base.privateKey = fs.readFileSync(keyPath);
-                    return base;
-                } catch {
-                    // Key unreadable, try next
-                }
+            try {
+                base.privateKey = fs.readFileSync(keyPath);
+                return base;
+            } catch {
+                // Key not found or unreadable, try next
             }
         }
 
@@ -171,7 +169,7 @@ export class SSHClient {
     }
 }
 
-function shellQuote(s: string): string {
+export function shellQuote(s: string): string {
     return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
