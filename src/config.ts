@@ -20,7 +20,10 @@ interface RawConfig {
     username?: string;
     remotePath?: string;
     autoLocalPull?: boolean;
+    /** SSH identity file.  Accepts both "identityFile" (ssh_config convention)
+     *  and "privateKeyPath" (sftp.json / remote-sync.json convention). */
     identityFile?: string;
+    privateKeyPath?: string;
     pollInterval?: number;
 }
 
@@ -65,19 +68,15 @@ export function loadConfig(
     const sftpConfigPath = path.join(workspaceRoot, '.vscode', 'sftp.json');
     if (fs.existsSync(sftpConfigPath)) {
         try {
-            const raw = JSON.parse(fs.readFileSync(sftpConfigPath, 'utf8')) as {
-                host?: string;
-                port?: number;
-                username?: string;
-                remotePath?: string;
-                privateKeyPath?: string;
-            };
+            const raw = JSON.parse(fs.readFileSync(sftpConfigPath, 'utf8')) as RawConfig;
             const sftpFields: RawConfig = {};
-            if (raw.host)           { sftpFields.host = raw.host; }
-            if (raw.port)           { sftpFields.port = raw.port; }
-            if (raw.username)       { sftpFields.username = raw.username; }
-            if (raw.remotePath)     { sftpFields.remotePath = raw.remotePath; }
-            if (raw.privateKeyPath) { sftpFields.identityFile = raw.privateKeyPath; }
+            if (raw.host)                             { sftpFields.host = raw.host; }
+            if (raw.port)                             { sftpFields.port = raw.port; }
+            if (raw.username)                         { sftpFields.username = raw.username; }
+            if (raw.remotePath)                       { sftpFields.remotePath = raw.remotePath; }
+            if (raw.privateKeyPath ?? raw.identityFile) {
+                sftpFields.identityFile = raw.privateKeyPath ?? raw.identityFile;
+            }
             merged = { ...merged, ...sftpFields };
             log(`loadConfig: layer 3 (sftp.json) applied → ${JSON.stringify(sftpFields)}`);
         } catch {
@@ -91,11 +90,13 @@ export function loadConfig(
         try {
             const raw: RawConfig = JSON.parse(fs.readFileSync(syncConfigPath, 'utf8'));
             const syncFields: RawConfig = {};
-            if (raw.host)         { syncFields.host = raw.host; }
-            if (raw.port)         { syncFields.port = raw.port; }
-            if (raw.username)     { syncFields.username = raw.username; }
-            if (raw.remotePath)   { syncFields.remotePath = raw.remotePath; }
-            if (raw.identityFile) { syncFields.identityFile = raw.identityFile; }
+            if (raw.host)                             { syncFields.host = raw.host; }
+            if (raw.port)                             { syncFields.port = raw.port; }
+            if (raw.username)                         { syncFields.username = raw.username; }
+            if (raw.remotePath)                       { syncFields.remotePath = raw.remotePath; }
+            if (raw.privateKeyPath ?? raw.identityFile) {
+                syncFields.identityFile = raw.privateKeyPath ?? raw.identityFile;
+            }
             merged = { ...merged, ...syncFields };
             log(`loadConfig: layer 2 (remote-sync.json) applied → ${JSON.stringify(syncFields)}`);
         } catch {
@@ -131,7 +132,7 @@ export function loadConfig(
         username: merged.username,
         remotePath: merged.remotePath.replace(/\/$/, ''),
         autoLocalPull: merged.autoLocalPull ?? vsSettings?.autoLocalPull ?? true,
-        identityFile: merged.identityFile,
+        identityFile: merged.privateKeyPath ?? merged.identityFile,
         pollInterval: merged.pollInterval ?? vsSettings?.pollInterval ?? 5000,
     };
     log(`loadConfig: resolved → ${JSON.stringify(config)}`);
