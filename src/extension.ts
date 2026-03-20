@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { loadConfig, readLocalGitRemoteUrl } from './config';
 import { SSHClient } from './sshClient';
 import { RemoteGitProvider, FileNode, TreeNode } from './remoteGitProvider';
-import { CommitInputViewProvider } from './commitInputView';
 import * as logger from './logger';
 
 // ---------------------------------------------------------------------------
@@ -98,13 +97,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
     context.subscriptions.push(treeView);
 
-    // Commit-message input webview — rendered in the "Remote Git" accordion
-    // above the Changes tree view, similar to VS Code's native SCM input box.
-    const commitInput = new CommitInputViewProvider();
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(CommitInputViewProvider.viewId, commitInput),
-    );
-
     const setMessage = (msg: string | undefined) => {
         treeView.message = msg;
     };
@@ -115,7 +107,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         provider = undefined;
         ssh = undefined;
         shell.setProvider(undefined);
-        commitInput.setRemoteDescription(undefined);
         setMessage('Connecting…');
 
         logger.log('init: starting');
@@ -161,11 +152,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         provider = new RemoteGitProvider(ssh, config, workspaceRoot);
         shell.setProvider(provider);
         setMessage(undefined); // clear message; tree content takes over
-
-        // Show remote destination (user@host:path) in the accordion header.
-        const port   = config.port ? `:${config.port}` : '';
-        const remote = `${config.username}@${config.host}${port}:${config.remotePath}`;
-        commitInput.setRemoteDescription(remote);
     };
 
     await init();
@@ -181,7 +167,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         provider = undefined;
         ssh = undefined;
         shell.setProvider(undefined);
-        commitInput.setRemoteDescription(undefined);
         setMessage('No remote Git config found.');
     });
     context.subscriptions.push(watcher);
@@ -196,8 +181,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ),
         vscode.commands.registerCommand('remoteGit.commit', async () => {
             if (!provider) { return; }
-            const ok = await provider.commit(commitInput.currentMessage);
-            if (ok) { commitInput.clearMessage(); }
+            const message = await vscode.window.showInputBox({
+                prompt: 'Commit message',
+                placeHolder: 'Message (press Enter to commit on remote)',
+                ignoreFocusOut: true,
+            });
+            if (message === undefined) { return; }
+            await provider.commit(message);
         }),
         vscode.commands.registerCommand('remoteGit.stageAll', () =>
             provider?.stageAll(),
