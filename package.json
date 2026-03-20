@@ -20,13 +20,8 @@
     "views": {
       "scm": [
         {
-          "id": "remoteGit.commitInput",
-          "name": "Remote Git",
-          "type": "webview"
-        },
-        {
           "id": "remoteGit.changesView",
-          "name": "Changes"
+          "name": "Remote Git"
         }
       ]
     },
@@ -96,13 +91,13 @@
       "view/title": [
         {
           "command": "remoteGit.commit",
-          "when": "view == remoteGit.commitInput",
+          "when": "view == remoteGit.changesView",
           "group": "navigation@1"
         },
         {
           "command": "remoteGit.refresh",
           "when": "view == remoteGit.changesView",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "remoteGit.viewLog",
